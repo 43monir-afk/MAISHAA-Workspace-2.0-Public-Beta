@@ -1,0 +1,6 @@
+{
+  "name": "MAISHAA WORKSPACE",
+  "description": "One Workspace. Every Office Task. এক জায়গায় আপনার সব অফিস কাজ। Browser-first office productivity workspace for PDF, Image, Batch, and Format conversions with 100% client-side privacy.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

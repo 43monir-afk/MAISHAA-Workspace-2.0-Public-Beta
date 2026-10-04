@@ -1,0 +1,86 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-sans: 'Hind Siliguri', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: 'JetBrains Mono', Menlo, Monaco, Consolas, monospace;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #070e1e;
+    color: #f8fafc;
+  }
+
+  code, kbd, samp, pre, .font-mono {
+    font-family: var(--font-mono);
+    font-feature-settings: "tnum" 1;
+  }
+}
+
+/* Custom polished MAISHAA scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.25);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.45);
+}
+
+/* MAISHAA 3D Depth Utilities (Pure CSS - 0 heavy WebGL) */
+.maishaa-card-3d {
+  background: #ffffff;
+  border-radius: 1rem;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.04);
+  transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 200ms cubic-bezier(0.16, 1, 0.3, 1), border-color 200ms ease;
+}
+
+.maishaa-card-3d:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px -4px rgba(15, 23, 42, 0.1), 0 4px 12px -2px rgba(15, 23, 42, 0.05);
+  border-color: rgba(13, 148, 136, 0.4);
+}
+
+.maishaa-btn-3d {
+  position: relative;
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+
+.maishaa-btn-3d:hover {
+  transform: translateY(-1px);
+}
+
+.maishaa-btn-3d:active {
+  transform: translateY(1px);
+}
+
+.maishaa-hero-glow {
+  background: radial-gradient(circle at 50% 30%, rgba(13, 148, 136, 0.12) 0%, rgba(37, 99, 235, 0.06) 45%, transparent 70%);
+}
+
+.maishaa-ai-glow {
+  box-shadow: 0 4px 20px -2px rgba(139, 92, 246, 0.3);
+}
+
+/* Accessibility: Respect Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  .maishaa-card-3d,
+  .maishaa-btn-3d,
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transform: none !important;
+  }
+}
