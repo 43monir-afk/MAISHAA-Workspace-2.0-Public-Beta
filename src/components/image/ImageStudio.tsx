@@ -102,6 +102,8 @@ export const ImageStudio: React.FC = () => {
   // Background Removal settings
   const [bgTolerance, setBgTolerance] = useState<number>(38);
   const [bgFeather, setBgFeather] = useState<number>(2);
+  const [smartAlphaMask, setSmartAlphaMask] = useState<boolean>(true);
+  const [previewBackdrop, setPreviewBackdrop] = useState<'checkerboard' | 'white' | 'dark'>('checkerboard');
 
   // Super-Resolution settings
   const [superResScale, setSuperResScale] = useState<2 | 4>(2);
@@ -282,6 +284,7 @@ export const ImageStudio: React.FC = () => {
           res = await removeImageBackground(selectedFile, {
             tolerance: bgTolerance,
             featherRadius: bgFeather,
+            smartAlpha: smartAlphaMask,
           });
           outName = generateSafeOutputFilename(selectedFile.name, 'nobg', 'png');
           break;
@@ -1183,9 +1186,19 @@ export const ImageStudio: React.FC = () => {
                       <Scissors className="w-4 h-4 text-teal-400" />
                       <span>{language === 'bn' ? 'ব্যাকগ্রাউন্ড অপসারণ সেটিংস' : 'Background Removal Settings'}</span>
                     </h3>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-300 border border-teal-500/20">
-                      Smart Alpha Mask
-                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSmartAlphaMask(!smartAlphaMask)}
+                      className={`text-[10px] font-mono px-2.5 py-1 rounded-full border transition-all flex items-center gap-1.5 cursor-pointer ${
+                        smartAlphaMask
+                          ? 'bg-teal-500/20 text-teal-300 border-teal-500/40 shadow-xs'
+                          : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
+                      }`}
+                      title={language === 'bn' ? 'স্মার্ট আলফা মাস্ক টগল করুন' : 'Toggle Smart Alpha Mask'}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full ${smartAlphaMask ? 'bg-teal-400 animate-pulse' : 'bg-slate-500'}`} />
+                      <span>Smart Alpha: {smartAlphaMask ? (language === 'bn' ? 'চালু' : 'ON') : (language === 'bn' ? 'বন্ধ' : 'OFF')}</span>
+                    </button>
                   </div>
 
                   <div className="space-y-3">
@@ -1211,8 +1224,8 @@ export const ImageStudio: React.FC = () => {
                       </div>
                       <input
                         type="range"
-                        min="1"
-                        max="5"
+                        min="0"
+                        max="8"
                         value={bgFeather}
                         onChange={(e) => setBgFeather(parseInt(e.target.value))}
                         className="w-full accent-teal-400 cursor-pointer"
@@ -1352,27 +1365,107 @@ export const ImageStudio: React.FC = () => {
                 <Eye className="w-4 h-4 text-teal-400" />
                 <span>
                   {result
-                    ? t.image.beforeAfter
+                    ? (activeSubTab === 'bg_remove'
+                        ? (language === 'bn' ? 'আসল এবং স্বচ্ছ ফলাফল তুলনা' : 'Before & After Transparency Comparison')
+                        : t.image.beforeAfter)
                     : isComparingOriginal
                     ? (language === 'bn' ? 'আসল ছবি' : 'Original Source')
                     : (language === 'bn' ? 'লাইভ প্রিভিউ' : 'Live Preview')}
                 </span>
               </h3>
 
-              {selectedFile && (
-                <span className="text-xs font-mono text-slate-400">
-                  {formatFileSize(selectedFile.size)}
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {resultUrl && activeSubTab === 'bg_remove' && (
+                  <div className="flex items-center p-0.5 rounded-lg bg-slate-800 border border-slate-700 text-[10px] font-mono">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewBackdrop('checkerboard')}
+                      className={`px-1.5 py-0.5 rounded cursor-pointer transition-colors ${
+                        previewBackdrop === 'checkerboard'
+                          ? 'bg-teal-500/30 text-teal-300 font-bold'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                      title={language === 'bn' ? 'চেকারবোর্ড ব্যাকগ্রাউন্ড' : 'Checkerboard Backdrop'}
+                    >
+                      {language === 'bn' ? 'চেকার' : 'Checker'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewBackdrop('white')}
+                      className={`px-1.5 py-0.5 rounded cursor-pointer transition-colors ${
+                        previewBackdrop === 'white'
+                          ? 'bg-teal-500/30 text-teal-300 font-bold'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                      title={language === 'bn' ? 'সাদা ব্যাকগ্রাউন্ড' : 'White Backdrop'}
+                    >
+                      {language === 'bn' ? 'সাদা' : 'White'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewBackdrop('dark')}
+                      className={`px-1.5 py-0.5 rounded cursor-pointer transition-colors ${
+                        previewBackdrop === 'dark'
+                          ? 'bg-teal-500/30 text-teal-300 font-bold'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                      title={language === 'bn' ? 'ডার্ক ব্যাকগ্রাউন্ড' : 'Dark Backdrop'}
+                    >
+                      {language === 'bn' ? 'ডার্ক' : 'Dark'}
+                    </button>
+                  </div>
+                )}
+                {selectedFile && (
+                  <span className="text-xs font-mono text-slate-400">
+                    {formatFileSize(selectedFile.size)}
+                  </span>
+                )}
+              </div>
             </div>
 
-            <div className="w-full h-72 sm:h-80 bg-slate-950/80 rounded-xl border border-slate-800/80 flex items-center justify-center overflow-hidden p-3 relative">
+            <div className="w-full min-h-72 sm:min-h-80 bg-slate-950/80 rounded-xl border border-slate-800/80 flex items-center justify-center overflow-hidden p-3 relative">
               {resultUrl && !isComparingOriginal ? (
-                <img
-                  src={resultUrl}
-                  alt="Processed Output"
-                  className="max-h-full max-w-full object-contain rounded shadow-lg"
-                />
+                activeSubTab === 'bg_remove' && previewUrl ? (
+                  /* Side-by-Side Before & After Preview for Background Removal */
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full h-full min-h-[260px]">
+                    {/* Left: Original Source Image */}
+                    <div className="flex flex-col items-center justify-center p-2.5 rounded-lg bg-slate-950/70 border border-slate-800/90 relative min-h-[220px]">
+                      <div className="absolute top-2 left-2 z-10 px-2 py-0.5 rounded bg-slate-900/90 border border-slate-700/80 text-[10px] font-mono text-slate-300 shadow-sm">
+                        {language === 'bn' ? 'আসল ছবি' : 'Original'}
+                      </div>
+                      <img
+                        src={previewUrl}
+                        alt="Original Source"
+                        className="max-h-60 sm:max-h-68 max-w-full object-contain rounded"
+                      />
+                    </div>
+
+                    {/* Right: Transparent Processed PNG Output */}
+                    <div className={`flex flex-col items-center justify-center p-2.5 rounded-lg border border-slate-700/80 relative min-h-[220px] overflow-hidden ${
+                      previewBackdrop === 'white'
+                        ? 'bg-white'
+                        : previewBackdrop === 'dark'
+                        ? 'bg-slate-950/90'
+                        : 'maishaa-checkerboard'
+                    }`}>
+                      <div className="absolute top-2 left-2 z-10 px-2 py-0.5 rounded bg-teal-950/95 border border-teal-500/50 text-[10px] font-mono text-teal-300 shadow-sm flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-teal-400" />
+                        <span>{language === 'bn' ? 'স্বচ্ছ পিএনজি' : 'Transparent PNG'}</span>
+                      </div>
+                      <img
+                        src={resultUrl}
+                        alt="Background Removed Result"
+                        className="max-h-60 sm:max-h-68 max-w-full object-contain relative z-1"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <img
+                    src={resultUrl}
+                    alt="Processed Output"
+                    className="max-h-full max-w-full object-contain rounded shadow-lg"
+                  />
+                )
               ) : previewUrl ? (
                 <img
                   src={previewUrl}

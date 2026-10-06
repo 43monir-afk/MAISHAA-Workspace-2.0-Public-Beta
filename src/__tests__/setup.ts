@@ -30,6 +30,45 @@ if (typeof window !== 'undefined') {
   }
 }
 
+// Global URL objectURL mocks for JSDOM
+if (typeof globalThis.URL !== 'undefined') {
+  globalThis.URL.createObjectURL = vi.fn(
+    () => `blob:http://localhost/${Math.random().toString(36).substring(2)}`
+  );
+  globalThis.URL.revokeObjectURL = vi.fn();
+}
+if (typeof window !== 'undefined' && window.URL) {
+  window.URL.createObjectURL = globalThis.URL.createObjectURL;
+  window.URL.revokeObjectURL = globalThis.URL.revokeObjectURL;
+}
+
+// Global Image constructor mock for JSDOM image loading
+if (typeof window !== 'undefined') {
+  class MockImage {
+    naturalWidth = 800;
+    naturalHeight = 600;
+    width = 800;
+    height = 600;
+    _src = '';
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+
+    get src() {
+      return this._src;
+    }
+
+    set src(value: string) {
+      this._src = value;
+      setTimeout(() => {
+        if (this.onload) this.onload();
+      }, 0);
+    }
+  }
+
+  (globalThis as any).Image = MockImage;
+  (window as any).Image = MockImage;
+}
+
 // 1. Mock HTMLCanvasElement 2D context & helpers unconditionally
 if (typeof HTMLCanvasElement !== 'undefined') {
   HTMLCanvasElement.prototype.getContext = function (type: string) {

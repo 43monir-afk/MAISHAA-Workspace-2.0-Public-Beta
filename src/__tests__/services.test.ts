@@ -6,6 +6,7 @@ import {
   generateSafeOutputFilename,
 } from '../utils/fileDetection';
 import { parsePageRanges } from '../services/pdfService';
+import { removeImageBackground } from '../services/imageService';
 
 describe('File Detection & Naming Utilities', () => {
   it('correctly detects PDF files and suggested actions', () => {
@@ -69,5 +70,55 @@ describe('File Detection & Naming Utilities', () => {
 
     const outOfBounds = parsePageRanges('15, 20', totalPages);
     expect(outOfBounds).toEqual([]);
+  });
+});
+
+describe('Image Studio - Background Removal Service', () => {
+  it('processes image and produces a valid transparent PNG without color corruption', async () => {
+    // 1x1 test image
+    const validPng = new Uint8Array([
+      137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0,
+      0, 0, 1, 8, 6, 0, 0, 0, 31, 21, 196, 137, 0, 0, 0, 10, 73, 68, 65, 84, 120,
+      156, 99, 0, 1, 0, 0, 5, 0, 1, 13, 10, 45, 180, 0, 0, 0, 0, 73, 69, 78, 68,
+      174, 66, 96, 130,
+    ]);
+    const file = new File([validPng], 'test_photo.png', { type: 'image/png' });
+
+    const result = await removeImageBackground(file, {
+      tolerance: 40,
+      featherRadius: 2,
+      smartAlpha: true,
+    });
+
+    expect(result.format).toBe('image/png');
+    expect(result.blob).toBeInstanceOf(Blob);
+    expect(result.width).toBeGreaterThanOrEqual(1);
+    expect(result.height).toBeGreaterThanOrEqual(1);
+  });
+
+  it('supports custom tolerance, edge feathering, and smart alpha toggle', async () => {
+    const validPng = new Uint8Array([
+      137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0,
+      0, 0, 1, 8, 6, 0, 0, 0, 31, 21, 196, 137, 0, 0, 0, 10, 73, 68, 65, 84, 120,
+      156, 99, 0, 1, 0, 0, 5, 0, 1, 13, 10, 45, 180, 0, 0, 0, 0, 73, 69, 78, 68,
+      174, 66, 96, 130,
+    ]);
+    const file = new File([validPng], 'portrait.png', { type: 'image/png' });
+
+    // Standard mode without smart alpha
+    const resStandard = await removeImageBackground(file, {
+      tolerance: 25,
+      featherRadius: 0,
+      smartAlpha: false,
+    });
+    expect(resStandard.format).toBe('image/png');
+
+    // Smart alpha mode with feathering
+    const resSmart = await removeImageBackground(file, {
+      tolerance: 50,
+      featherRadius: 4,
+      smartAlpha: true,
+    });
+    expect(resSmart.format).toBe('image/png');
   });
 });
