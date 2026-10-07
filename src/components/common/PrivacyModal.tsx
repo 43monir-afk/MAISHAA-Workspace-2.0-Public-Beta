@@ -84,10 +84,15 @@ export const PrivacyModal: React.FC = () => {
             </div>
           </div>
 
-          <div className="p-3 bg-slate-800/50 rounded-lg text-xs text-slate-400 border border-slate-700/50">
-            {language === 'bn'
-              ? 'পরবর্তী ফেজে যখন ঐচ্ছিক ক্লাউড এআই বা উচ্চমানের সার্ভার কনভার্সন আসবে, তখন স্পষ্ট কনসেন্ট ছাড়া কোনো ফাইল আপলোড হবে না।'
-              : 'When optional cloud AI or server processing is introduced in future phases, files will only be uploaded upon explicit user consent.'}
+          <div className="p-3.5 bg-slate-800/60 rounded-xl text-xs text-slate-300 border border-slate-700/60 space-y-2">
+            <div className="font-bold text-teal-300 flex items-center gap-1.5">
+              <span>{language === 'bn' ? 'বিজ্ঞাপন ও ডেটা নিরাপত্তা স্বচ্ছতা' : 'Advertising & Data Security Transparency'}</span>
+            </div>
+            <p className="leading-relaxed text-slate-400">
+              {language === 'bn'
+                ? 'মায়িশা ওয়ার্কস্পেসের সকল টুল বিনামূল্যে বজায় রাখতে নন-ইনট্রুসিভ ডিসপ্লে বিজ্ঞাপন (Adsterra/AdSense) প্রদর্শিত হয়। বিজ্ঞাপন স্লটগুলো বিচ্ছিন্ন স্যান্ডবক্সে পরিচালিত হয় এবং আপনার কোনো ফাইল বা ডকুমেন্টের বিষয়বস্তু দেখার ক্ষমতা এদের নেই। আমরা কোনো থার্ড-পার্টি ট্র্যাকিং কুকি ব্যবহার করি না।'
+                : 'To keep MAISHAA WORKSPACE 100% free, non-intrusive display ads (Adsterra/AdSense) are served. All ad units operate in isolated sandboxes and have zero access to your files or documents. MAISHAA sets no third-party tracking cookies.'}
+            </p>
           </div>
         </div>
 

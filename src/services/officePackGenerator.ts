@@ -507,19 +507,40 @@ export async function validateAndExtractSourceContent(
           }
 
           try {
-            const mammothRes = await mammoth.extractRawText({ arrayBuffer });
+            const mammothOptions = typeof Buffer !== 'undefined'
+              ? { buffer: Buffer.from(arrayBuffer) }
+              : { arrayBuffer };
+            const mammothRes = await mammoth.extractRawText(mammothOptions);
             rawText = mammothRes.value || '';
           } catch {
             // Direct OpenXML fallback
             const docXml = await zip.file('word/document.xml')?.async('string');
             if (docXml) {
-              const runs: string[] = [];
-              const tRegex = /<w:t[^>]*>(.*?)<\/w:t>/g;
-              let m;
-              while ((m = tRegex.exec(docXml)) !== null) {
-                runs.push(m[1]);
+              const paragraphs: string[] = [];
+              const pRegex = /<w:p\b[^>]*>([\s\S]*?)<\/w:p>/g;
+              let pMatch: RegExpExecArray | null;
+              while ((pMatch = pRegex.exec(docXml)) !== null) {
+                let paraText = '';
+                const elemRegex = /<w:t\b[^>]*>([\s\S]*?)<\/w:t>|<w:tab\/>|<w:br\/>/g;
+                let elemMatch: RegExpExecArray | null;
+                while ((elemMatch = elemRegex.exec(pMatch[1])) !== null) {
+                  if (elemMatch[1] !== undefined) {
+                    paraText += elemMatch[1]
+                      .replace(/&amp;/g, '&')
+                      .replace(/&lt;/g, '<')
+                      .replace(/&gt;/g, '>')
+                      .replace(/&quot;/g, '"')
+                      .replace(/&apos;/g, "'");
+                  } else if (elemMatch[0] === '<w:tab/>') {
+                    paraText += '\t';
+                  } else if (elemMatch[0] === '<w:br/>') {
+                    paraText += '\n';
+                  }
+                }
+                const trimmed = paraText.trim();
+                if (trimmed) paragraphs.push(trimmed);
               }
-              rawText = runs.join(' ');
+              rawText = paragraphs.join('\n\n');
             }
           }
         } catch (mErr: any) {

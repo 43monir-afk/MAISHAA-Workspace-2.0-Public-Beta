@@ -9,6 +9,9 @@ export interface Translations {
     home: string;
     pdfStudio: string;
     imageStudio: string;
+    bgRemover: string;
+    creativeStudio: string;
+    whiteboard: string;
     batchStudio: string;
     convertStudio: string;
     ocrStudio: string;
@@ -218,6 +221,9 @@ export const translations: Record<LanguageMode, Translations> = {
       home: 'হোম',
       pdfStudio: 'পিডিএফ স্টুডিও',
       imageStudio: 'ছবি স্টুডিও',
+      bgRemover: 'ব্যাকগ্রাউন্ড রিমুভার',
+      creativeStudio: 'ক্রিয়েটিভ ডিজাইন স্টুডিও',
+      whiteboard: 'ইনফিনিট হোয়াইটবোর্ড',
       batchStudio: 'ব্যাচ প্রসেসিং',
       convertStudio: 'কনভার্ট স্টুডিও',
       ocrStudio: 'স্ক্যান ও ওসিআর',
@@ -425,6 +431,9 @@ export const translations: Record<LanguageMode, Translations> = {
       home: 'Home',
       pdfStudio: 'PDF Studio',
       imageStudio: 'Image Studio',
+      bgRemover: 'Background Remover',
+      creativeStudio: 'Creative Design Studio',
+      whiteboard: 'Infinite Whiteboard',
       batchStudio: 'Batch Studio',
       convertStudio: 'Convert Studio',
       ocrStudio: 'Scan & OCR',

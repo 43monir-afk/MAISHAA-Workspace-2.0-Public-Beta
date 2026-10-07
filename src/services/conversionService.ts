@@ -5,7 +5,7 @@
  */
 
 import * as XLSX from 'xlsx';
-import { parseDocxDocument } from './docIntelService';
+import { parseDocxDocument, validateUnicodeExtraction } from './docIntelService';
 import { extractPdfText } from './pdfService';
 import { parsePresentation } from './slidesIntelService';
 import { exportToPdf, exportToDocx } from './directExportService';
@@ -29,6 +29,9 @@ export interface ConversionResult {
 export async function convertDocxToPdf(file: File): Promise<ConversionResult> {
   const analysis = await parseDocxDocument(file);
   const title = file.name.replace(/\.[^/.]+$/, '');
+
+  // Pre-render validation: verify Unicode integrity
+  validateUnicodeExtraction(analysis.extractedText, file.name);
 
   // Format document text with clean markdown headings
   let markdown = `# ${title}\n\n`;

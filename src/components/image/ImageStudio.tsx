@@ -72,6 +72,7 @@ export const ImageStudio: React.FC = () => {
     addJob,
     updateJob,
     showNotification,
+    setActiveModule,
   } = useWorkspace();
 
   const [activeSubTab, setActiveSubTab] = useState<ImageSubTab>('retouch');
@@ -1181,6 +1182,29 @@ export const ImageStudio: React.FC = () => {
               {/* Background Removal Mode */}
               {activeSubTab === 'bg_remove' && (
                 <div className="space-y-4">
+                  {/* Dedicated Full BG Remove Studio Launch Banner */}
+                  <div className="p-3 rounded-2xl bg-gradient-to-r from-teal-500/20 via-sky-500/15 to-blue-500/10 border border-teal-500/30 flex items-center justify-between gap-3 shadow-md">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-white">
+                        <Sparkles className="w-3.5 h-3.5 text-teal-400" />
+                        <span>{language === 'bn' ? 'মায়িশা বিজি রিমুভ স্টুডিও' : 'MAISHAA BG Remove Studio'}</span>
+                        <span className="text-[9px] px-1.5 py-0.2 rounded-full font-mono font-bold bg-teal-500/30 text-teal-300">PRO</span>
+                      </div>
+                      <p className="text-[11px] text-slate-300 leading-tight">
+                        {language === 'bn'
+                          ? 'ব্যাচ প্রসেসিং, ম্যানুয়াল ব্রাশ, এআই ব্যাকগ্রাউন্ড ও প্রোডাক্ট ফটো ফ্রেম।'
+                          : 'Batch processing, manual brush cutout, AI backdrops & product framing.'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveModule('bg_remover')}
+                      className="px-3 py-1.5 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold text-xs whitespace-nowrap shadow-sm transition-all"
+                    >
+                      {language === 'bn' ? 'স্টুডিও খুলুন →' : 'Open Studio →'}
+                    </button>
+                  </div>
+
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-white flex items-center gap-2">
                       <Scissors className="w-4 h-4 text-teal-400" />

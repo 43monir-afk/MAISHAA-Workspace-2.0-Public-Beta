@@ -14,6 +14,9 @@ export type ToolCategory =
   | 'universal'
   | 'pdf'
   | 'image'
+  | 'bg_remover'
+  | 'creative'
+  | 'whiteboard'
   | 'batch'
   | 'convert'
   | 'ocr'
@@ -28,7 +31,10 @@ export type ToolCategory =
   | 'spreadsheet_future'
   | 'presentation_future'
   | 'ocr_future'
-  | 'ai_future';
+  | 'ai_future'
+  | 'tutorials'
+  | 'privacy'
+  | 'about';
 
 export type JobStatus = 
   | 'WAITING'

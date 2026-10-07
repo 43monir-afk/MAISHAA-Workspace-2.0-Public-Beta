@@ -10,6 +10,7 @@ import { Sidebar } from './components/common/Sidebar';
 import { UniversalWorkspace } from './components/universal/UniversalWorkspace';
 import { PdfStudio } from './components/pdf/PdfStudio';
 import { ImageStudio } from './components/image/ImageStudio';
+import { BackgroundStudio } from './components/image/BackgroundStudio';
 import { BatchStudio } from './components/batch/BatchStudio';
 import { ConvertStudio } from './components/convert/ConvertStudio';
 import { ScanOcrStudio } from './components/ocr/ScanOcrStudio';
@@ -17,9 +18,12 @@ import { DocumentIntelStudio } from './components/docintel/DocumentIntelStudio';
 import { SpreadsheetIntelStudio } from './components/sheetintel/SpreadsheetIntelStudio';
 import { PresentationIntelStudio } from './components/slidesintel/PresentationIntelStudio';
 import { BangladeshFormsHub } from './components/forms/BangladeshFormsHub';
+import { CreativeStudio } from './components/creative/CreativeStudio';
+import { WhiteboardStudio } from './components/creative/WhiteboardStudio';
 import { OneClickOfficePack } from './components/officepack/OneClickOfficePack';
 import { AiCommandCenter } from './components/ai/AiCommandCenter';
 import { AiCloudStudio } from './components/future/AiCloudStudio';
+import { TutorialsHub } from './components/tutorials/TutorialsHub';
 
 import { JobManagerDrawer } from './components/common/JobManagerDrawer';
 import { SessionHistoryModal } from './components/common/SessionHistoryModal';
@@ -41,6 +45,9 @@ import {
   Presentation,
   Package,
   Sparkles,
+  Scissors,
+  Palette,
+  PenTool,
 } from 'lucide-react';
 
 const WorkspaceShell: React.FC = () => {
@@ -50,6 +57,9 @@ const WorkspaceShell: React.FC = () => {
     { id: 'universal', label: t.nav.home, icon: FolderRoot },
     { id: 'pdf', label: t.nav.pdfStudio, icon: FileText },
     { id: 'image', label: t.nav.imageStudio, icon: ImageIcon },
+    { id: 'bg_remover', label: t.nav.bgRemover, icon: Scissors },
+    { id: 'creative', label: t.nav.creativeStudio, icon: Palette },
+    { id: 'whiteboard', label: t.nav.whiteboard, icon: PenTool },
     { id: 'ocr', label: t.nav.ocrStudio, icon: FileSearch },
     { id: 'doc_intel', label: t.nav.docIntel, icon: FileCode },
     { id: 'sheet_intel', label: t.nav.sheetIntel, icon: Table },
@@ -105,6 +115,9 @@ const WorkspaceShell: React.FC = () => {
           {activeModule === 'universal' && <UniversalWorkspace />}
           {activeModule === 'pdf' && <PdfStudio />}
           {activeModule === 'image' && <ImageStudio />}
+          {activeModule === 'bg_remover' && <BackgroundStudio />}
+          {activeModule === 'creative' && <CreativeStudio />}
+          {activeModule === 'whiteboard' && <WhiteboardStudio />}
           {activeModule === 'ocr' && <ScanOcrStudio />}
           {activeModule === 'doc_intel' && <DocumentIntelStudio />}
           {activeModule === 'sheet_intel' && <SpreadsheetIntelStudio />}
@@ -115,6 +128,7 @@ const WorkspaceShell: React.FC = () => {
           {activeModule === 'batch' && <BatchStudio />}
           {activeModule === 'convert' && <ConvertStudio />}
           {activeModule === 'ai_future' && <AiCloudStudio />}
+          {activeModule === 'tutorials' && <TutorialsHub />}
 
           {/* Transient notification toast */}
           {notification && (

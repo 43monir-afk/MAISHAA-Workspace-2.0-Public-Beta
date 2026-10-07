@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /storage/
+Disallow: /temp/
+
+Sitemap: https://workspace.maishaa.bd/sitemap.xml

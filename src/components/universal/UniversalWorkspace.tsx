@@ -4,6 +4,7 @@ import { SmartTaskBox } from '../smarttask/SmartTaskBox';
 import { Logo } from '../common/Logo';
 import { MaishaaHeroStudents } from '../common/MaishaaHeroStudents';
 import { AdSlot } from '../common/AdSlot';
+import { ToolSeoGuide } from '../common/ToolSeoGuide';
 import {
   detectMultipleFiles,
   formatFileSize,
@@ -36,6 +37,9 @@ import {
   FolderSync,
   X,
   FileCheck2,
+  Scissors,
+  PenTool,
+  LayoutTemplate,
 } from 'lucide-react';
 
 export const UniversalWorkspace: React.FC = () => {
@@ -137,6 +141,17 @@ export const UniversalWorkspace: React.FC = () => {
       shadowColor: 'rgba(59, 130, 246, 0.35)',
     },
     {
+      id: 'bg_remover',
+      module: 'bg_remover' as ToolCategory,
+      titleEn: 'BG Remove Studio',
+      titleBn: 'ব্যাকগ্রাউন্ড রিমুভার',
+      descEn: '1-click cutout, transparent PNG, product framing, and AI backdrops',
+      descBn: '১-ক্লিকে ছবির ব্যাকগ্রাউন্ড অপসারণ, স্বচ্ছ পিএনজি ও এআই ব্যাকড্রপ স্টুডিও।',
+      icon: Scissors,
+      colorGrad: 'from-teal-600 to-emerald-500',
+      shadowColor: 'rgba(20, 184, 166, 0.35)',
+    },
+    {
       id: 'doc_intel',
       module: 'doc_intel' as ToolCategory,
       titleEn: 'Document Studio',
@@ -170,15 +185,37 @@ export const UniversalWorkspace: React.FC = () => {
       shadowColor: 'rgba(249, 115, 22, 0.35)',
     },
     {
+      id: 'creative',
+      module: 'creative' as ToolCategory,
+      titleEn: 'Creative Design Studio',
+      titleBn: 'ক্রিয়েটিভ ডিজাইন স্টুডিও',
+      descEn: 'Canva-style vector editor, certificates, ID cards, social posts, brand kit, and bulk create',
+      descBn: 'ক্যানভা-স্টাইল ডিজাইন এডিটর, সম্মাননা সনদপত্র, আইডি কার্ড ও বাল্ক ক্রিয়েট।',
+      icon: Palette,
+      colorGrad: 'from-purple-600 to-indigo-600',
+      shadowColor: 'rgba(147, 51, 234, 0.35)',
+    },
+    {
+      id: 'whiteboard',
+      module: 'whiteboard' as ToolCategory,
+      titleEn: 'Infinite Whiteboard',
+      titleBn: 'ইনফিনিট হোয়াইটবোর্ড',
+      descEn: 'Brainstorm, sticky notes, mind maps, flowcharts and infinite canvas',
+      descBn: 'সীমাহীন ক্যানভাসে আইডিয়া ব্রেনস্টর্মিং, স্টিকি নোটস ও ফ্লোচার্ট ডায়াগ্রাম।',
+      icon: PenTool,
+      colorGrad: 'from-amber-600 to-orange-500',
+      shadowColor: 'rgba(245, 158, 11, 0.35)',
+    },
+    {
       id: 'forms',
       module: 'forms' as ToolCategory,
-      titleEn: 'Design Studio',
+      titleEn: 'Forms & Templates',
       titleBn: 'বাংলাদেশ ফরম হাব',
-      descEn: 'Posters, certificates, ID cards, banners, social media and more',
+      descEn: 'Official forms, automated fill, and ready-to-print documents',
       descBn: 'সরকারি ও অফিসিয়াল আবেদন ফরম পূরণ, অটো-ফিল ও রেডি-টু-প্রিন্ট পিডিএফ তৈরি।',
-      icon: Palette,
-      colorGrad: 'from-purple-600 to-violet-500',
-      shadowColor: 'rgba(147, 51, 234, 0.35)',
+      icon: LayoutTemplate,
+      colorGrad: 'from-sky-600 to-blue-500',
+      shadowColor: 'rgba(14, 165, 233, 0.35)',
     },
     {
       id: 'convert',
@@ -400,6 +437,13 @@ export const UniversalWorkspace: React.FC = () => {
             >
               <Plus className="w-3.5 h-3.5 text-blue-600" />
               <span>Create New</span>
+            </button>
+            <button
+              onClick={() => setActiveModule('bg_remover')}
+              className="px-3.5 py-2 rounded-xl bg-teal-50 hover:bg-teal-100 border border-teal-200 text-xs font-bold text-teal-800 flex items-center gap-1.5 shadow-2xs transition-colors"
+            >
+              <Scissors className="w-3.5 h-3.5 text-teal-600" />
+              <span>Remove BG</span>
             </button>
             <button
               onClick={() => setActiveModule('doc_intel')}
@@ -760,6 +804,9 @@ export const UniversalWorkspace: React.FC = () => {
         </h3>
         <SmartTaskBox />
       </div>
+
+      {/* Discoverable Tool Guide & Genuine FAQs for Home */}
+      <ToolSeoGuide routePath="/" />
     </div>
   );
 };

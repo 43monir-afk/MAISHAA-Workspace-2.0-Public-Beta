@@ -13,6 +13,9 @@ import {
   ShieldCheck,
   History,
   HelpCircle,
+  Scissors,
+  Palette,
+  BookOpen,
 } from 'lucide-react';
 
 export const Header: React.FC = () => {
@@ -105,6 +108,26 @@ export const Header: React.FC = () => {
           <span>Pro Plan</span>
         </button>
 
+        {/* BG Remover Quick Action */}
+        <button
+          onClick={() => setActiveModule('bg_remover')}
+          className="hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 text-xs font-bold transition-colors shadow-2xs"
+          title="BG Remove Studio"
+        >
+          <Scissors className="w-3.5 h-3.5 text-teal-600" />
+          <span>BG Remover</span>
+        </button>
+
+        {/* Creative Suite Quick Action */}
+        <button
+          onClick={() => setActiveModule('creative')}
+          className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-bold transition-colors shadow-2xs"
+          title="Creative Design Studio"
+        >
+          <Palette className="w-3.5 h-3.5 text-indigo-600" />
+          <span>Creative Studio</span>
+        </button>
+
         {/* Jobs Queue */}
         <button
           onClick={() => setIsJobDrawerOpen(true)}
@@ -136,13 +159,13 @@ export const Header: React.FC = () => {
           <span className="font-sans">{language === 'bn' ? 'বাংলা' : 'English ▾'}</span>
         </button>
 
-        {/* Help & Guide */}
+        {/* Help & Tutorials Guide */}
         <button
-          onClick={() => setIsHelpModalOpen(true)}
+          onClick={() => setActiveModule('tutorials')}
           className="hidden sm:flex p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-transparent hover:border-slate-200 transition-colors"
-          title={t.nav.help}
+          title={language === 'bn' ? 'ব্যবহার নির্দেশিকা ও টিউটোরিয়াল' : 'Tutorials & Guides'}
         >
-          <HelpCircle className="w-4 h-4" />
+          <BookOpen className="w-4 h-4 text-blue-600" />
         </button>
 
         {/* User Profile Avatar */}

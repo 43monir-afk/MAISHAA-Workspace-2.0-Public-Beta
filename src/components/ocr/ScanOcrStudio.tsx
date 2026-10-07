@@ -14,6 +14,8 @@ import { PrivacyIndicator } from '../common/PrivacyIndicator';
 import { formatFileSize, generateSafeOutputFilename } from '../../utils/fileDetection';
 import { createManagedObjectUrl } from '../../utils/privacy';
 import { downloadFileOnce } from '../../utils/downloadHelper';
+import { ToolSeoGuide } from '../common/ToolSeoGuide';
+import { AdSlot } from '../common/AdSlot';
 import {
   FileSearch,
   Upload,
@@ -644,6 +646,10 @@ export const ScanOcrStudio: React.FC = () => {
               </p>
             </div>
           )}
+
+          {/* Genuine Searchable SEO Guide & FAQ Section */}
+          <ToolSeoGuide routePath="/scan-ocr" />
+          <AdSlot placement="tool-result-bottom" />
         </div>
       </div>
     </div>

@@ -1,0 +1,10 @@
+# MAISHAA WORKSPACE Official ads.txt
+# Domain: workspace.maishaa.bd
+# Publisher records for authorized digital advertising sellers
+# 
+# Note for site administrator:
+# When connected to Google AdSense, paste your verified publisher record line here:
+# google.com, pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0
+#
+# Adsterra display placement integration:
+# adsterra.com, direct

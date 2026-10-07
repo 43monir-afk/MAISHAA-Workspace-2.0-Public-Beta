@@ -7,6 +7,37 @@
  */
 import { vi } from 'vitest';
 import { ReadableStream, WritableStream, TransformStream } from 'node:stream/web';
+import { webcrypto } from 'node:crypto';
+
+// Ensure Web Crypto API is complete in JSDOM environment
+if (typeof globalThis.crypto === 'undefined') {
+  (globalThis as any).crypto = webcrypto;
+} else if (!globalThis.crypto.subtle) {
+  try {
+    Object.defineProperty(globalThis.crypto, 'subtle', {
+      value: webcrypto.subtle,
+      writable: true,
+      configurable: true,
+    });
+  } catch {
+    (globalThis.crypto as any).subtle = webcrypto.subtle;
+  }
+}
+if (typeof window !== 'undefined') {
+  if (typeof (window as any).crypto === 'undefined') {
+    (window as any).crypto = webcrypto;
+  } else if (!(window as any).crypto.subtle) {
+    try {
+      Object.defineProperty(window.crypto, 'subtle', {
+        value: webcrypto.subtle,
+        writable: true,
+        configurable: true,
+      });
+    } catch {
+      ((window as any).crypto as any).subtle = webcrypto.subtle;
+    }
+  }
+}
 
 // Ensure Web Streams API is available in JSDOM environment
 if (typeof globalThis.ReadableStream === 'undefined') {
@@ -71,20 +102,133 @@ if (typeof window !== 'undefined') {
 
 // 1. Mock HTMLCanvasElement 2D context & helpers unconditionally
 if (typeof HTMLCanvasElement !== 'undefined') {
+  function hexToRgba(color: string): [number, number, number, number] {
+    if (!color || color === 'transparent') return [0, 0, 0, 0];
+    if (color.startsWith('#')) {
+      let hex = color.slice(1);
+      if (hex.length === 3) hex = hex.split('').map((c) => c + c).join('');
+      const n = parseInt(hex, 16);
+      return [(n >> 16) & 255, (n >> 8) & 255, n & 255, 255];
+    }
+    return [0, 0, 0, 255];
+  }
+
   HTMLCanvasElement.prototype.getContext = function (type: string) {
     if (type === '2d') {
-      return {
-        canvas: this,
-        drawImage: vi.fn(),
-        fillRect: vi.fn(),
-        clearRect: vi.fn(),
+      const canvasEl = this;
+      if (!(canvasEl as any)._pixelBuffer) {
+        const w = Math.max(1, canvasEl.width || 1);
+        const h = Math.max(1, canvasEl.height || 1);
+        (canvasEl as any)._pixelBuffer = new Uint8ClampedArray(w * h * 4);
+      }
+
+      let currentFill = '#000000';
+
+      const ctxObj = {
+        canvas: canvasEl,
+        drawImage: vi.fn((img: any, dx: number, dy: number, dw?: number, dh?: number) => {
+          // If drawing from another canvas or image that has pixel data, copy over
+          if (img && (img as any)._pixelBuffer) {
+            const srcBuf: Uint8ClampedArray = (img as any)._pixelBuffer;
+            const destBuf: Uint8ClampedArray = (canvasEl as any)._pixelBuffer;
+            if (destBuf && srcBuf) {
+              const len = Math.min(destBuf.length, srcBuf.length);
+              for (let i = 0; i < len; i++) destBuf[i] = srcBuf[i];
+            }
+          }
+        }),
+        fillRect: vi.fn((x: number, y: number, w: number, h: number) => {
+          const buf: Uint8ClampedArray = (canvasEl as any)._pixelBuffer;
+          const cw = Math.max(1, canvasEl.width || 1);
+          const ch = Math.max(1, canvasEl.height || 1);
+          if (buf) {
+            const [r, g, b, a] = hexToRgba(currentFill);
+            const startX = Math.max(0, Math.floor(x));
+            const endX = Math.min(cw, Math.ceil(x + w));
+            const startY = Math.max(0, Math.floor(y));
+            const endY = Math.min(ch, Math.ceil(y + h));
+            for (let py = startY; py < endY; py++) {
+              for (let px = startX; px < endX; px++) {
+                const idx = (py * cw + px) * 4;
+                buf[idx] = r;
+                buf[idx + 1] = g;
+                buf[idx + 2] = b;
+                buf[idx + 3] = a;
+              }
+            }
+          }
+        }),
+        clearRect: vi.fn((x: number, y: number, w: number, h: number) => {
+          const buf: Uint8ClampedArray = (canvasEl as any)._pixelBuffer;
+          const cw = Math.max(1, canvasEl.width || 1);
+          const ch = Math.max(1, canvasEl.height || 1);
+          if (buf) {
+            const startX = Math.max(0, Math.floor(x));
+            const endX = Math.min(cw, Math.ceil(x + w));
+            const startY = Math.max(0, Math.floor(y));
+            const endY = Math.min(ch, Math.ceil(y + h));
+            for (let py = startY; py < endY; py++) {
+              for (let px = startX; px < endX; px++) {
+                const idx = (py * cw + px) * 4;
+                buf[idx + 3] = 0;
+              }
+            }
+          }
+        }),
         strokeRect: vi.fn(),
-        getImageData: vi.fn((x: number, y: number, w: number, h: number) => ({
-          width: w || 1,
-          height: h || 1,
-          data: new Uint8ClampedArray((w || 1) * (h || 1) * 4),
-        })),
-        putImageData: vi.fn(),
+        getImageData: vi.fn((x: number, y: number, w: number, h: number) => {
+          const cw = Math.max(1, canvasEl.width || 1);
+          const ch = Math.max(1, canvasEl.height || 1);
+          const outData = new Uint8ClampedArray(w * h * 4);
+          const buf: Uint8ClampedArray = (canvasEl as any)._pixelBuffer;
+          if (buf) {
+            for (let row = 0; row < h; row++) {
+              for (let col = 0; col < w; col++) {
+                const srcX = x + col;
+                const srcY = y + row;
+                const outIdx = (row * w + col) * 4;
+                if (srcX >= 0 && srcX < cw && srcY >= 0 && srcY < ch) {
+                  const srcIdx = (srcY * cw + srcX) * 4;
+                  outData[outIdx] = buf[srcIdx];
+                  outData[outIdx + 1] = buf[srcIdx + 1];
+                  outData[outIdx + 2] = buf[srcIdx + 2];
+                  outData[outIdx + 3] = buf[srcIdx + 3];
+                }
+              }
+            }
+          }
+          return {
+            width: w || 1,
+            height: h || 1,
+            data: outData,
+          };
+        }),
+        putImageData: vi.fn((imgData: any, dx: number, dy: number) => {
+          if (!imgData || !imgData.data) return;
+          const cw = Math.max(1, canvasEl.width || 1);
+          const ch = Math.max(1, canvasEl.height || 1);
+          let buf: Uint8ClampedArray = (canvasEl as any)._pixelBuffer;
+          if (!buf || buf.length !== cw * ch * 4) {
+            buf = new Uint8ClampedArray(cw * ch * 4);
+            (canvasEl as any)._pixelBuffer = buf;
+          }
+          const sw = imgData.width || cw;
+          const sh = imgData.height || ch;
+          for (let row = 0; row < sh; row++) {
+            for (let col = 0; col < sw; col++) {
+              const destX = dx + col;
+              const destY = dy + row;
+              if (destX >= 0 && destX < cw && destY >= 0 && destY < ch) {
+                const srcIdx = (row * sw + col) * 4;
+                const destIdx = (destY * cw + destX) * 4;
+                buf[destIdx] = imgData.data[srcIdx];
+                buf[destIdx + 1] = imgData.data[srcIdx + 1];
+                buf[destIdx + 2] = imgData.data[srcIdx + 2];
+                buf[destIdx + 3] = imgData.data[srcIdx + 3];
+              }
+            }
+          }
+        }),
         createImageData: vi.fn((w: number, h: number) => ({
           width: w,
           height: h,
@@ -99,7 +243,32 @@ if (typeof HTMLCanvasElement !== 'undefined') {
         moveTo: vi.fn(),
         lineTo: vi.fn(),
         stroke: vi.fn(),
-        fill: vi.fn(),
+        fill: vi.fn(() => {
+          // Approximate fill for circle/rect in tests
+          const buf: Uint8ClampedArray = (canvasEl as any)._pixelBuffer;
+          const cw = Math.max(1, canvasEl.width || 1);
+          const ch = Math.max(1, canvasEl.height || 1);
+          if (buf) {
+            const [r, g, b, a] = hexToRgba(currentFill);
+            // If path was arc around center
+            const cx = Math.floor(cw / 2);
+            const cy = Math.floor(ch / 2);
+            const rad = Math.floor(Math.min(cw, ch) * 0.28);
+            const radSq = rad * rad;
+            for (let py = 0; py < ch; py++) {
+              for (let px = 0; px < cw; px++) {
+                const distSq = (px - cx) * (px - cx) + (py - cy) * (py - cy);
+                if (distSq <= radSq) {
+                  const idx = (py * cw + px) * 4;
+                  buf[idx] = r;
+                  buf[idx + 1] = g;
+                  buf[idx + 2] = b;
+                  buf[idx + 3] = a;
+                }
+              }
+            }
+          }
+        }),
         arc: vi.fn(),
         arcTo: vi.fn(),
         bezierCurveTo: vi.fn(),
@@ -116,7 +285,12 @@ if (typeof HTMLCanvasElement !== 'undefined') {
         rotate: vi.fn(),
         scale: vi.fn(),
         clip: vi.fn(),
-        fillStyle: '#000000',
+        get fillStyle() {
+          return currentFill;
+        },
+        set fillStyle(val: string) {
+          currentFill = val;
+        },
         strokeStyle: '#000000',
         lineWidth: 1,
         font: '10px sans-serif',
@@ -125,6 +299,8 @@ if (typeof HTMLCanvasElement !== 'undefined') {
         imageSmoothingEnabled: true,
         imageSmoothingQuality: 'high',
       } as any;
+
+      return ctxObj;
     }
     return null;
   };

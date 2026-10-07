@@ -7,6 +7,7 @@ import {
 } from '../types/workspace';
 import { translations, Translations } from '../i18n/translations';
 import { revokeManagedObjectUrl, revokeAllManagedObjectUrls } from '../utils/privacy';
+import { PUBLIC_ROUTES_SEO } from '../config/seoConfig';
 
 interface WorkspaceContextType {
   activeModule: ToolCategory;
@@ -66,13 +67,167 @@ interface WorkspaceContextType {
   // Quick Notification
   notification: string | null;
   showNotification: (msg: string) => void;
+
+  // Deep route & tab state
+  pdfInitialTab: string | null;
+  setPdfInitialTab: (tab: string | null) => void;
+  navigateTo: (path: string, options?: { replace?: boolean }) => void;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
 
 export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [activeModule, setActiveModule] = useState<ToolCategory>('universal');
+  const resolveRouteState = (pathname: string): { module: ToolCategory; subTab: string | null } => {
+    const p = pathname.toLowerCase();
+    if (p.includes('/image-studio/background-remover') || p.includes('/background-remover')) {
+      return { module: 'bg_remover', subTab: null };
+    }
+    if (p.includes('/image-studio/resize')) {
+      return { module: 'image', subTab: 'resize' };
+    }
+    if (p.includes('/pdf-studio/merge')) {
+      return { module: 'pdf', subTab: 'merge' };
+    }
+    if (p.includes('/pdf-studio/split')) {
+      return { module: 'pdf', subTab: 'split' };
+    }
+    if (p.includes('/pdf-studio/compress')) {
+      return { module: 'pdf', subTab: 'compress' };
+    }
+    if (p.includes('/pdf-studio/organize')) {
+      return { module: 'pdf', subTab: 'organize' };
+    }
+    if (p.includes('/pdf-studio/convert')) {
+      return { module: 'pdf', subTab: 'convert' };
+    }
+    if (p.includes('/pdf-studio') || p.includes('/pdf')) {
+      return { module: 'pdf', subTab: 'merge' };
+    }
+    if (p.includes('/scan-ocr') || p.includes('/ocr-studio')) {
+      return { module: 'ocr', subTab: null };
+    }
+    if (p.includes('/forms-hub') || p.includes('/office-letter')) {
+      return { module: 'forms', subTab: null };
+    }
+    if (p.includes('/creative-suite') || p.includes('/design')) {
+      return { module: 'creative', subTab: null };
+    }
+    if (p.includes('/whiteboard')) {
+      return { module: 'whiteboard', subTab: null };
+    }
+    if (p.includes('/office-pack')) {
+      return { module: 'office_pack', subTab: null };
+    }
+    if (p.includes('/tutorials') || p.includes('/guides')) {
+      return { module: 'tutorials', subTab: null };
+    }
+    if (p.includes('/privacy')) {
+      return { module: 'privacy', subTab: null };
+    }
+    if (p.includes('/about')) {
+      return { module: 'about', subTab: null };
+    }
+    if (p.includes('/image-studio')) {
+      return { module: 'image', subTab: null };
+    }
+    if (p.includes('/convert-studio')) {
+      return { module: 'convert', subTab: null };
+    }
+    if (p.includes('/document-studio')) {
+      return { module: 'doc_intel', subTab: null };
+    }
+    if (p.includes('/spreadsheet-studio')) {
+      return { module: 'sheet_intel', subTab: null };
+    }
+    if (p.includes('/presentation-studio')) {
+      return { module: 'slides_intel', subTab: null };
+    }
+    if (p.includes('/ai-command')) {
+      return { module: 'ai_command', subTab: null };
+    }
+    if (p.includes('/batch-studio')) {
+      return { module: 'batch', subTab: null };
+    }
+    return { module: 'universal', subTab: null };
+  };
+
+  const initialRoute = typeof window !== 'undefined'
+    ? resolveRouteState(window.location.pathname)
+    : { module: 'universal' as ToolCategory, subTab: null };
+
+  const [activeModule, setActiveModuleState] = useState<ToolCategory>(initialRoute.module);
+  const [pdfInitialTab, setPdfInitialTab] = useState<string | null>(initialRoute.subTab);
+
+  const navigateTo = (path: string, options?: { replace?: boolean }) => {
+    const route = resolveRouteState(path);
+    setActiveModuleState(route.module);
+    if (route.subTab) {
+      setPdfInitialTab(route.subTab);
+    }
+    if (typeof window !== 'undefined') {
+      if (options?.replace) {
+        window.history.replaceState({ path }, '', path);
+      } else if (window.location.pathname !== path) {
+        window.history.pushState({ path }, '', path);
+      }
+    }
+  };
+
+  const setActiveModule = (mod: ToolCategory) => {
+    setActiveModuleState(mod);
+    if (typeof window !== 'undefined') {
+      let targetPath = '/';
+      if (mod === 'bg_remover') targetPath = '/image-studio/background-remover';
+      else if (mod === 'pdf') targetPath = pdfInitialTab ? `/pdf-studio/${pdfInitialTab}` : '/pdf-studio';
+      else if (mod === 'creative') targetPath = '/creative-suite';
+      else if (mod === 'whiteboard') targetPath = '/whiteboard';
+      else if (mod === 'image') targetPath = '/image-studio';
+      else if (mod === 'convert') targetPath = '/convert-studio';
+      else if (mod === 'ocr') targetPath = '/scan-ocr';
+      else if (mod === 'doc_intel') targetPath = '/document-studio';
+      else if (mod === 'sheet_intel') targetPath = '/spreadsheet-studio';
+      else if (mod === 'slides_intel') targetPath = '/presentation-studio';
+      else if (mod === 'forms') targetPath = '/forms-hub';
+      else if (mod === 'office_pack') targetPath = '/office-pack';
+      else if (mod === 'ai_command') targetPath = '/ai-command';
+      else if (mod === 'batch') targetPath = '/batch-studio';
+      else if (mod === 'tutorials') targetPath = '/tutorials';
+      else if (mod === 'privacy') targetPath = '/privacy';
+      else if (mod === 'about') targetPath = '/about';
+      else if (mod === 'universal') targetPath = '/';
+
+      if (window.location.pathname !== targetPath) {
+        window.history.pushState({ module: mod }, '', targetPath);
+      }
+    }
+  };
+
+  useEffect(() => {
+    const handlePopState = () => {
+      if (typeof window !== 'undefined') {
+        const route = resolveRouteState(window.location.pathname);
+        setActiveModuleState(route.module);
+        if (route.subTab) {
+          setPdfInitialTab(route.subTab);
+        }
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   const [language, setLanguage] = useState<LanguageMode>('bn');
+
+  // Sync document title with current route SEO metadata
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const currentPath = window.location.pathname;
+      const seo = PUBLIC_ROUTES_SEO[currentPath] || PUBLIC_ROUTES_SEO['/'];
+      if (seo) {
+        document.title = language === 'bn' ? seo.titleBn : seo.titleEn;
+      }
+    }
+  }, [activeModule, pdfInitialTab, language]);
   const [stagedFiles, setStagedFiles] = useState<File[]>([]);
   const [jobs, setJobs] = useState<ProcessedJob[]>([]);
   const [isJobDrawerOpen, setIsJobDrawerOpen] = useState(false);
@@ -266,6 +421,9 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         closeFutureModal,
         notification,
         showNotification,
+        pdfInitialTab,
+        setPdfInitialTab,
+        navigateTo,
       }}
     >
       {children}

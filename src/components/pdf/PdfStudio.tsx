@@ -8,13 +8,23 @@ import {
   rotatePages,
   imagesToPdf,
   optimizePdf,
+  repairDamagedPdf,
+  convertToPdfA,
+  cropPdfPages,
+  fillPdfAcroForm,
   getPdfMetadata,
   PdfMetadata,
 } from '../../services/pdfService';
+import {
+  encryptPdfWithPassword,
+  decryptPdfWithPassword,
+  isPdfEncrypted,
+} from '../../services/pdfSecurityService';
 import { formatFileSize, generateSafeOutputFilename } from '../../utils/fileDetection';
 import { createManagedObjectUrl } from '../../utils/privacy';
 import { downloadFileOnce } from '../../utils/downloadHelper';
 import { AdSlot } from '../common/AdSlot';
+import { ToolSeoGuide } from '../common/ToolSeoGuide';
 import {
   FileText,
   Upload,
@@ -34,6 +44,13 @@ import {
   ArrowRight,
   ShieldCheck,
   ChevronDown,
+  Lock,
+  Unlock,
+  Wrench,
+  Archive,
+  Crop,
+  FormInput,
+  Key,
 } from 'lucide-react';
 
 type PdfSubTab =
@@ -42,8 +59,14 @@ type PdfSubTab =
   | 'extract'
   | 'delete'
   | 'rotate'
+  | 'crop'
   | 'imagesToPdf'
   | 'compress'
+  | 'protect'
+  | 'unlock'
+  | 'repair'
+  | 'pdfa'
+  | 'forms'
   | 'metadata';
 
 export const PdfStudio: React.FC = () => {
@@ -54,9 +77,23 @@ export const PdfStudio: React.FC = () => {
     addJob,
     updateJob,
     showNotification,
+    pdfInitialTab,
   } = useWorkspace();
 
   const [activeSubTab, setActiveSubTab] = useState<PdfSubTab>('merge');
+
+  // Deep-link routing synchronization
+  useEffect(() => {
+    if (pdfInitialTab) {
+      if (['merge', 'split', 'compress', 'delete', 'extract', 'crop', 'protect', 'unlock', 'repair', 'pdfa', 'forms', 'metadata'].includes(pdfInitialTab)) {
+        setActiveSubTab(pdfInitialTab as PdfSubTab);
+      } else if (pdfInitialTab === 'organize') {
+        setActiveSubTab('rotate');
+      } else if (pdfInitialTab === 'convert') {
+        setActiveSubTab('imagesToPdf');
+      }
+    }
+  }, [pdfInitialTab]);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingError, setProcessingError] = useState<string | null>(null);
@@ -66,6 +103,14 @@ export const PdfStudio: React.FC = () => {
   const [rotateAngle, setRotateAngle] = useState<90 | 180 | 270>(90);
   const [rotateScope, setRotateScope] = useState<'all' | 'custom'>('all');
   const [rotatePagesInput, setRotatePagesInput] = useState<string>('1');
+
+  // Advanced PDF Studio Parameters (iLovePDF parity)
+  const [passwordInput, setPasswordInput] = useState<string>('');
+  const [pdfaProfile, setPdfaProfile] = useState<'PDF/A-1b' | 'PDF/A-2b'>('PDF/A-1b');
+  const [cropMargins, setCropMargins] = useState({ top: 36, right: 36, bottom: 36, left: 36 });
+  const [formFieldName, setFormFieldName] = useState<string>('Full_Name');
+  const [formFieldValue, setFormFieldValue] = useState<string>('ফারজানা ইসলাম দিনা');
+  const [flattenForm, setFlattenForm] = useState<boolean>(false);
 
   // Metadata inspect state
   const [metadata, setMetadata] = useState<PdfMetadata | null>(null);
@@ -254,6 +299,95 @@ export const PdfStudio: React.FC = () => {
           break;
         }
 
+        case 'crop': {
+          result = await cropPdfPages(selectedFiles[0], cropMargins);
+          outName = generateSafeOutputFilename(
+            selectedFiles[0].name,
+            'cropped',
+            'pdf'
+          );
+          break;
+        }
+
+        case 'protect': {
+          const enc = await encryptPdfWithPassword(selectedFiles[0], passwordInput);
+          result = {
+            blob: enc.blob,
+            originalSize: selectedFiles[0].size,
+            newSize: enc.size,
+            pageCount: 1,
+            meaningfulReduction: false,
+          };
+          outName = generateSafeOutputFilename(
+            selectedFiles[0].name,
+            'protected_aes256',
+            'pdf'
+          );
+          break;
+        }
+
+        case 'unlock': {
+          const dec = await decryptPdfWithPassword(selectedFiles[0], passwordInput);
+          result = {
+            blob: dec.blob,
+            originalSize: selectedFiles[0].size,
+            newSize: dec.size,
+            pageCount: 1,
+            meaningfulReduction: false,
+          };
+          outName = generateSafeOutputFilename(
+            selectedFiles[0].name,
+            'decrypted_unlocked',
+            'pdf'
+          );
+          break;
+        }
+
+        case 'repair': {
+          const rep = await repairDamagedPdf(selectedFiles[0]);
+          result = {
+            blob: rep.blob,
+            originalSize: rep.originalSize,
+            newSize: rep.newSize,
+            pageCount: rep.repairedPages,
+            meaningfulReduction: false,
+          };
+          outName = generateSafeOutputFilename(
+            selectedFiles[0].name,
+            'repaired',
+            'pdf'
+          );
+          break;
+        }
+
+        case 'pdfa': {
+          const pdfaRes = await convertToPdfA(selectedFiles[0], pdfaProfile);
+          result = {
+            blob: pdfaRes.blob,
+            originalSize: selectedFiles[0].size,
+            newSize: pdfaRes.size,
+            pageCount: 1,
+            meaningfulReduction: false,
+          };
+          outName = generateSafeOutputFilename(
+            selectedFiles[0].name,
+            `archival_${pdfaProfile.replace(/[/]/g, '_')}`,
+            'pdf'
+          );
+          break;
+        }
+
+        case 'forms': {
+          const fValues: Record<string, string> = { [formFieldName]: formFieldValue };
+          result = await fillPdfAcroForm(selectedFiles[0], fValues, flattenForm);
+          outName = generateSafeOutputFilename(
+            selectedFiles[0].name,
+            flattenForm ? 'forms_flattened' : 'forms_interactive',
+            'pdf'
+          );
+          break;
+        }
+
         default:
           throw new Error('Unsupported action');
       }
@@ -311,8 +445,14 @@ export const PdfStudio: React.FC = () => {
     { id: 'extract', label: t.pdf.extract, icon: Scissors },
     { id: 'delete', label: t.pdf.deletePages, icon: Trash2 },
     { id: 'rotate', label: t.pdf.rotate, icon: RotateCw },
+    { id: 'crop', label: language === 'bn' ? 'ক্রপ পৃষ্ঠা' : 'Crop Pages', icon: Crop },
     { id: 'imagesToPdf', label: t.pdf.imagesToPdf, icon: ImageIcon },
     { id: 'compress', label: t.pdf.compress, icon: Minimize2 },
+    { id: 'protect', label: language === 'bn' ? 'পাসওয়ার্ড সুরক্ষা' : 'Protect PDF', icon: Lock },
+    { id: 'unlock', label: language === 'bn' ? 'আনলক পিডিএফ' : 'Unlock PDF', icon: Unlock },
+    { id: 'repair', label: language === 'bn' ? 'পিডিএফ মেরামত' : 'Repair PDF', icon: Wrench },
+    { id: 'pdfa', label: language === 'bn' ? 'পিডিএফ/এ আর্কাইভ' : 'PDF/A Archival', icon: Archive },
+    { id: 'forms', label: language === 'bn' ? 'অ্যাক্রোফর্ম পূরণ' : 'AcroForms', icon: FormInput },
     { id: 'metadata', label: t.pdf.metadata, icon: Info },
   ];
 
@@ -591,6 +731,164 @@ export const PdfStudio: React.FC = () => {
                 </div>
               )}
 
+              {/* Crop Controls */}
+              {activeSubTab === 'crop' && (
+                <div className="space-y-3">
+                  <label className="text-xs text-slate-300 font-medium block">
+                    {language === 'bn' ? 'মার্জিন ট্রিম / ক্রপ বক্স (pt)' : 'Crop Margins (pt)'}
+                  </label>
+                  <div className="grid grid-cols-4 gap-2">
+                    <div>
+                      <span className="text-[10px] text-slate-400 block mb-1">Top</span>
+                      <input
+                        type="number"
+                        value={cropMargins.top}
+                        onChange={(e) => setCropMargins((m) => ({ ...m, top: parseInt(e.target.value, 10) || 0 }))}
+                        className="w-full px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block mb-1">Right</span>
+                      <input
+                        type="number"
+                        value={cropMargins.right}
+                        onChange={(e) => setCropMargins((m) => ({ ...m, right: parseInt(e.target.value, 10) || 0 }))}
+                        className="w-full px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block mb-1">Bottom</span>
+                      <input
+                        type="number"
+                        value={cropMargins.bottom}
+                        onChange={(e) => setCropMargins((m) => ({ ...m, bottom: parseInt(e.target.value, 10) || 0 }))}
+                        className="w-full px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block mb-1">Left</span>
+                      <input
+                        type="number"
+                        value={cropMargins.left}
+                        onChange={(e) => setCropMargins((m) => ({ ...m, left: parseInt(e.target.value, 10) || 0 }))}
+                        className="w-full px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Password Protection */}
+              {activeSubTab === 'protect' && (
+                <div className="space-y-3">
+                  <label className="text-xs text-slate-300 font-medium block">
+                    {language === 'bn' ? 'এনক্রিপশন পাসওয়ার্ড (AES-256)' : 'Encryption Password (AES-256)'}
+                  </label>
+                  <input
+                    type="password"
+                    value={passwordInput}
+                    onChange={(e) => setPasswordInput(e.target.value)}
+                    placeholder="Enter secure password"
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-mono"
+                  />
+                  <p className="text-[11px] text-slate-400">
+                    {language === 'bn'
+                      ? 'পিডিএফটি ব্রাউজারের Web Crypto AES-GCM-256 অ্যালগরিদমে সম্পূর্ণভাবে এনক্রিপ্ট হবে।'
+                      : 'The document is encrypted with authenticated AES-GCM-256.'}
+                  </p>
+                </div>
+              )}
+
+              {/* Password Unlock */}
+              {activeSubTab === 'unlock' && (
+                <div className="space-y-3">
+                  <label className="text-xs text-slate-300 font-medium block">
+                    {language === 'bn' ? 'আনলক পাসওয়ার্ড প্রদান করুন' : 'Enter Password to Decrypt'}
+                  </label>
+                  <input
+                    type="password"
+                    value={passwordInput}
+                    onChange={(e) => setPasswordInput(e.target.value)}
+                    placeholder="Enter document password"
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-mono"
+                  />
+                </div>
+              )}
+
+              {/* Repair Note */}
+              {activeSubTab === 'repair' && (
+                <div className="p-3.5 rounded-xl bg-blue-950/30 border border-blue-800/40 text-xs text-blue-300 space-y-1">
+                  <span className="font-semibold block text-blue-200">
+                    {language === 'bn' ? 'বেস্ট-এফোর্ট মেরামত ইঞ্জিন' : 'Best-Effort Repair Engine'}
+                  </span>
+                  <p className="text-blue-300/80 leading-relaxed">
+                    {language === 'bn'
+                      ? 'ক্ষতিগ্রস্ত এক্সরেফ টেবিল ও ভেঙে যাওয়া পিডিএফ অবজেক্ট ট্রি স্বয়ংক্রিয়ভাবে রিকনস্ট্রাক্ট করা হবে।'
+                      : 'Reconstructs broken cross-reference tables and recovers uncorrupted page trees.'}
+                  </p>
+                </div>
+              )}
+
+              {/* PDF/A Archival Profile */}
+              {activeSubTab === 'pdfa' && (
+                <div className="space-y-3">
+                  <label className="text-xs text-slate-300 font-medium block">
+                    {language === 'bn' ? 'পিডিএফ/এ প্রোফাইল সিলেক্ট করুন' : 'PDF/A Conformance Profile'}
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(['PDF/A-1b', 'PDF/A-2b'] as const).map((prof) => (
+                      <button
+                        key={prof}
+                        type="button"
+                        onClick={() => setPdfaProfile(prof)}
+                        className={`py-2 px-3 rounded-xl text-xs font-semibold border transition-all ${
+                          pdfaProfile === prof
+                            ? 'bg-teal-500 text-slate-950 border-teal-400 font-bold'
+                            : 'bg-slate-800 text-slate-300 border-slate-700'
+                        }`}
+                      >
+                        {prof} (ISO 19005)
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* AcroForms Interactive Fill */}
+              {activeSubTab === 'forms' && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] text-slate-400 block mb-1">Field Name (ফিল্ডের নাম)</label>
+                      <input
+                        type="text"
+                        value={formFieldName}
+                        onChange={(e) => setFormFieldName(e.target.value)}
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-400 block mb-1">Field Value (তথ্য)</label>
+                      <input
+                        type="text"
+                        value={formFieldValue}
+                        onChange={(e) => setFormFieldValue(e.target.value)}
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs font-mono"
+                      />
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer pt-1">
+                    <input
+                      type="checkbox"
+                      checked={flattenForm}
+                      onChange={(e) => setFlattenForm(e.target.checked)}
+                      className="rounded bg-slate-800 border-slate-700 text-teal-500"
+                    />
+                    <span>{language === 'bn' ? 'প্রিন্ট বা বিতরণের জন্য ফ্ল্যাটেন করুন (Flatten)' : 'Flatten form fields for printing'}</span>
+                  </label>
+                </div>
+              )}
+
               {/* Compression Note */}
               {activeSubTab === 'compress' && (
                 <div className="p-3.5 rounded-xl bg-teal-950/30 border border-teal-800/40 text-xs text-teal-300 space-y-1">
@@ -810,6 +1108,21 @@ export const PdfStudio: React.FC = () => {
               {t.pdf.noFakeOcrNote}
             </p>
           </div>
+
+          {/* Genuine Searchable SEO Guide & FAQ Section */}
+          <ToolSeoGuide
+            routePath={
+              activeSubTab === 'merge'
+                ? '/pdf-studio/merge'
+                : activeSubTab === 'split'
+                ? '/pdf-studio/split'
+                : activeSubTab === 'compress'
+                ? '/pdf-studio/compress'
+                : activeSubTab === 'rotate'
+                ? '/pdf-studio/organize'
+                : '/pdf-studio/convert'
+            }
+          />
 
           {/* Tool Result Bottom Ad Slot (After Result Section) */}
           <AdSlot placement="tool-result-bottom" />

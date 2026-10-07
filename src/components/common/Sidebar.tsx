@@ -19,6 +19,9 @@ import {
   Cloud,
   ChevronRight,
   Crown,
+  Scissors,
+  PenTool,
+  BookOpen,
 } from 'lucide-react';
 import { ToolCategory } from '../../types/workspace';
 import { AdSlot } from './AdSlot';
@@ -58,6 +61,14 @@ export const Sidebar: React.FC = () => {
       shadowColor: 'rgba(59, 130, 246, 0.4)',
     },
     {
+      id: 'bg_remover',
+      labelEn: 'BG Remover Studio',
+      labelBn: t.nav.bgRemover,
+      icon: Scissors,
+      colorGrad: 'from-teal-600 to-emerald-500',
+      shadowColor: 'rgba(20, 184, 166, 0.4)',
+    },
+    {
       id: 'doc_intel',
       labelEn: 'Document Studio',
       labelBn: t.nav.docIntel,
@@ -82,12 +93,28 @@ export const Sidebar: React.FC = () => {
       shadowColor: 'rgba(249, 115, 22, 0.4)',
     },
     {
-      id: 'forms',
-      labelEn: 'Design Studio',
-      labelBn: 'ডিজাইন ও ফরম হাব',
+      id: 'creative',
+      labelEn: 'Creative Studio',
+      labelBn: t.nav.creativeStudio,
       icon: Palette,
-      colorGrad: 'from-purple-600 to-violet-500',
+      colorGrad: 'from-purple-600 to-indigo-600',
       shadowColor: 'rgba(147, 51, 234, 0.4)',
+    },
+    {
+      id: 'whiteboard',
+      labelEn: 'Whiteboard',
+      labelBn: t.nav.whiteboard,
+      icon: PenTool,
+      colorGrad: 'from-amber-600 to-orange-500',
+      shadowColor: 'rgba(245, 158, 11, 0.4)',
+    },
+    {
+      id: 'forms',
+      labelEn: 'Forms & Templates',
+      labelBn: t.nav.formsHub,
+      icon: LayoutTemplate,
+      colorGrad: 'from-sky-600 to-blue-500',
+      shadowColor: 'rgba(14, 165, 233, 0.4)',
     },
     {
       id: 'convert',
@@ -184,6 +211,13 @@ export const Sidebar: React.FC = () => {
 
         {/* Lower File Storage Links */}
         <div className="space-y-0.5 text-xs text-slate-400">
+          <button
+            onClick={() => setActiveModule('tutorials')}
+            className="w-full flex items-center gap-3 px-3 py-1.5 rounded-lg hover:text-slate-200 hover:bg-slate-800/40 transition-colors"
+          >
+            <BookOpen className="w-4 h-4 text-blue-400" />
+            <span>{language === 'bn' ? 'ব্যবহার নির্দেশিকা' : 'Tutorials & Guides'}</span>
+          </button>
           <button
             onClick={() => setActiveModule('universal')}
             className="w-full flex items-center gap-3 px-3 py-1.5 rounded-lg hover:text-slate-200 hover:bg-slate-800/40 transition-colors"
