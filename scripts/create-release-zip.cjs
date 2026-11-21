@@ -16,6 +16,7 @@ const LEGACY_OUTPUT_FILE = path.resolve(ROOT_DIR, 'maishaa-workspace-release.zip
 const LEGACY_RELEASE_FILE = path.resolve(OUTPUT_DIR, 'maishaa-workspace-release.zip');
 
 // Explicit exclusion rules
+// Keep only the safe template .env.example; exclude every other .env* variant.
 const EXCLUDE_DIRS = new Set([
   'node_modules',
   '.git',
@@ -28,10 +29,6 @@ const EXCLUDE_DIRS = new Set([
 
 const EXCLUDE_FILES = new Set([
   '.env',
-  '.env.local',
-  '.env.development.local',
-  '.env.test.local',
-  '.env.production.local',
   '.DS_Store',
   'Thumbs.db',
   'MAISHAA-Workspace-2.zip',
@@ -49,6 +46,8 @@ function shouldExclude(relPath) {
   // Check filename exclusions
   const filename = parts[parts.length - 1];
   if (EXCLUDE_FILES.has(filename)) return true;
+  // Environment files often contain credentials. Preserve only the documented template.
+  if (filename.startsWith('.env.') && filename !== '.env.example') return true;
   if (filename.endsWith('.log')) return true;
   if (filename.endsWith('.zip')) return true;
   return false;
