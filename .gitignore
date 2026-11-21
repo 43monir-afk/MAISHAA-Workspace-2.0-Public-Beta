@@ -7,3 +7,5 @@ coverage/
 *.zip
 .env*
 !.env.example
+/data/
+desktop/release/

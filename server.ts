@@ -6,6 +6,8 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
 import { PUBLIC_ROUTES_SEO, generateSchemaJsonLd, CANONICAL_DOMAIN } from './src/config/seoConfig';
+import { createApi, mountApi, protectExpensiveRoutes, requireFeature } from './server/express';
+import { imageBodyValidator } from './server/imageGuard';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -88,7 +90,21 @@ loadEnvironment();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Accounts, Free/Pro licences, contact form and admin panel (server/api.ts).
+// Data lives in DATA_DIR (default ./data) — on Render, mount a persistent disk there.
+const { api: accountApi } = createApi();
+
+// Expensive image/vision routes: reject anonymous, over-quota and oversized requests BEFORE the
+// JSON body (up to 10 MB of base64) is buffered and parsed. Full checks run again per route below.
+protectExpensiveRoutes(app, accountApi, [
+  { path: '/api/ai/ocr', feature: 'aiOcr' },
+  { path: '/api/ai/image-to-prompt', feature: 'aiImagePrompt' },
+  { path: '/api/image/remove-bg', feature: 'bgRemoveCloud' },
+  { path: '/api/image/generate-bg', feature: 'bgGenerate' },
+]);
+
 app.use(express.json({ limit: '10mb' }));
+mountApi(app, accountApi);
 
 // Helper to check if Gemini is configured and instantiate client
 export function getAiClient(): GoogleGenAI | null {
@@ -122,7 +138,7 @@ app.get('/api/ai/status', (_req: Request, res: Response) => {
 });
 
 // 2. Document-Grounded AI Analysis & Q&A endpoint
-app.post('/api/ai/chat', async (req: Request, res: Response) => {
+app.post('/api/ai/chat', requireFeature(accountApi, 'aiChat', { clampField: 'documentContext' }), async (req: Request, res: Response) => {
   const ai = getAiClient();
   if (!ai) {
     return res.status(503).json({
@@ -186,7 +202,7 @@ STRICT GROUNDING & ANTI-HALLUCINATION RULES:
 });
 
 // 3. Document Translation endpoint (text-first)
-app.post('/api/ai/translate', async (req: Request, res: Response) => {
+app.post('/api/ai/translate', requireFeature(accountApi, 'aiTranslate', { checkField: 'text' }), async (req: Request, res: Response) => {
   const ai = getAiClient();
   if (!ai) {
     return res.status(503).json({
@@ -236,7 +252,7 @@ RULES:
 });
 
 // 4. AI Command Center — Intent Analysis and Suggested Action Planning (Phase 4 Step 4A)
-app.post('/api/ai/command', async (req: Request, res: Response) => {
+app.post('/api/ai/command', requireFeature(accountApi, 'aiCommand'), async (req: Request, res: Response) => {
   const ai = getAiClient();
   if (!ai) {
     return res.status(503).json({
@@ -457,7 +473,7 @@ CRITICAL ARCHITECTURAL CONSTRAINTS:
 });
 
 // Phase 4 Step 4B: Confirmed AI Text Execution Endpoint (Summarize, Rewrite, Translate, Extract)
-app.post('/api/ai/execute', async (req: Request, res: Response) => {
+app.post('/api/ai/execute', requireFeature(accountApi, 'aiCommand'), async (req: Request, res: Response) => {
   const ai = getAiClient();
   if (!ai) {
     return res.status(503).json({
@@ -582,7 +598,7 @@ User instruction context: ${instruction || 'Organize content logically'}`;
 
 
 // High-Fidelity Cloud AI OCR Endpoint (Gemini Vision)
-app.post('/api/ai/ocr', async (req: Request, res: Response) => {
+app.post('/api/ai/ocr', requireFeature(accountApi, 'aiOcr', { validate: imageBodyValidator('aiOcr') }), async (req: Request, res: Response) => {
   const ai = getAiClient();
   if (!ai) {
     return res.status(503).json({
@@ -591,15 +607,14 @@ app.post('/api/ai/ocr', async (req: Request, res: Response) => {
     });
   }
 
-  const { imageBase64, mimeType = 'image/jpeg', targetLanguage = 'Mixed' } = req.body;
-  if (!imageBase64) {
-    return res.status(400).json({ status: 'INVALID_REQUEST', message: 'imageBase64 is required for Cloud OCR.' });
-  }
+  // imageBase64 / mimeType were validated and normalised by imageBodyValidator (magic-byte type, size cap).
+  const { imageBase64, mimeType } = req.body;
+  const targetLanguage = ['Bangla', 'English', 'Mixed'].includes(req.body.targetLanguage) ? req.body.targetLanguage : 'Mixed';
 
   const langNote = targetLanguage === 'Bangla' ? 'Bangla (Bengali)' : targetLanguage === 'English' ? 'English' : 'Bengali and English';
 
   try {
-    const cleanBase64 = String(imageBase64).replace(/^data:image\/[a-z]+;base64,/, '');
+    const cleanBase64 = imageBase64 as string;
     const response = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
       contents: [
@@ -639,16 +654,16 @@ app.post('/api/ai/ocr', async (req: Request, res: Response) => {
       linesCount: parsed.linesCount || (parsed.cleanedText ? parsed.cleanedText.split('\n').length : 0),
     });
   } catch (error: any) {
-    console.error('Cloud OCR error:', error);
+    console.error('Cloud OCR error:', error?.message || error);
     return res.status(500).json({
       status: 'ERROR',
-      message: error?.message || 'Cloud OCR recognition failed.',
+      message: 'Cloud OCR recognition failed. Please try again or use Local OCR.',
     });
   }
 });
 
 // Image -> AI Prompt Generator (Gemini Vision Image Reverse Prompting)
-app.post('/api/ai/image-to-prompt', async (req: Request, res: Response) => {
+app.post('/api/ai/image-to-prompt', requireFeature(accountApi, 'aiImagePrompt', { validate: imageBodyValidator('aiImagePrompt', { textField: 'customInstruction' }) }), async (req: Request, res: Response) => {
   const ai = getAiClient();
   if (!ai) {
     return res.status(503).json({
@@ -657,13 +672,11 @@ app.post('/api/ai/image-to-prompt', async (req: Request, res: Response) => {
     });
   }
 
-  const { imageBase64, mimeType = 'image/jpeg', customInstruction } = req.body;
-  if (!imageBase64) {
-    return res.status(400).json({ status: 'INVALID_REQUEST', message: 'imageBase64 is required.' });
-  }
+  // imageBase64 / mimeType / customInstruction were validated and normalised by the guard.
+  const { imageBase64, mimeType, customInstruction } = req.body;
 
   try {
-    const cleanBase64 = String(imageBase64).replace(/^data:image\/[a-z]+;base64,/, '');
+    const cleanBase64 = imageBase64 as string;
     const userPromptText = customInstruction
       ? `Analyze this image in detail and create an exceptional generative AI image prompt for it. Follow this extra instruction: "${customInstruction}".`
       : 'Analyze this image in high detail and craft a professional, rich generative AI image prompt capturing its subjects, environment, mood, lighting, color palette, camera angle, and artistic medium.';
@@ -723,10 +736,10 @@ Return ONLY valid JSON matching this schema:
       });
     }
 
-    console.error('Server Image-to-Prompt error:', error);
+    console.error('Server Image-to-Prompt error:', error?.message || error);
     return res.status(500).json({
       status: 'ERROR',
-      message: error?.message || 'Failed to generate prompt from image.',
+      message: 'Failed to generate prompt from image. Please try again.',
     });
   }
 });
@@ -754,18 +767,15 @@ app.get('/api/image/provider-status', (_req: Request, res: Response) => {
   });
 });
 
-app.post('/api/image/remove-bg', async (req: Request, res: Response) => {
+app.post('/api/image/remove-bg', requireFeature(accountApi, 'bgRemoveCloud', { validate: imageBodyValidator('bgRemoveCloud') }), async (req: Request, res: Response) => {
   const removeBgKey = process.env.REMOVE_BG_API_KEY;
-  const imageBase64 = req.body?.imageBase64 || req.body?.image;
-
-  if (!imageBase64) {
-    return res.status(400).json({ status: 'INVALID_REQUEST', message: 'Image payload is required.' });
-  }
+  // Validated and normalised by the guard (accepts imageBase64 or image; always clean base64 here).
+  const imageBase64: string = req.body.imageBase64;
 
   // 1. Try remove.bg API if configured on server
   if (removeBgKey && removeBgKey.trim().length > 5) {
     try {
-      const cleanBase64 = String(imageBase64).replace(/^data:image\/[a-z]+;base64,/, '');
+      const cleanBase64 = imageBase64;
       const response = await fetch('https://api.remove.bg/v1.0/removebg', {
         method: 'POST',
         headers: {
@@ -801,7 +811,7 @@ app.post('/api/image/remove-bg', async (req: Request, res: Response) => {
   });
 });
 
-app.post('/api/image/generate-bg', async (req: Request, res: Response) => {
+app.post('/api/image/generate-bg', requireFeature(accountApi, 'bgGenerate', { checkField: 'prompt' }), async (req: Request, res: Response) => {
   const ai = getAiClient();
   if (!ai) {
     return res.status(503).json({
@@ -838,7 +848,7 @@ app.post('/api/image/generate-bg', async (req: Request, res: Response) => {
     console.error('Server generate-bg error:', error?.message);
     return res.status(500).json({
       status: 'ERROR',
-      message: error?.message || 'Failed to generate background image.',
+      message: 'Failed to generate background image. Please try again.',
     });
   }
 });
@@ -866,7 +876,7 @@ app.get('/robots.txt', (_req: Request, res: Response) => {
     return res.sendFile(robotsTxtPath);
   }
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  return res.send('User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /storage/\n\nSitemap: https://workspace.maishaa.bd/sitemap.xml\n');
+  return res.send('User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /admin\nDisallow: /account\nDisallow: /signin\nDisallow: /storage/\n\nSitemap: https://workspace.maishaa.bd/sitemap.xml\n');
 });
 
 // 3. Dynamic XML Sitemap route
@@ -972,10 +982,18 @@ async function startServer() {
     app.get('*', (req: Request, res: Response) => {
       const cleanPath = req.path.split('?')[0].replace(/\/+$/, '') || '/';
       const isKnownRoute = Boolean(PUBLIC_ROUTES_SEO[cleanPath]);
+      const isPrivateClientRoute = ['/signin', '/account', '/admin'].includes(cleanPath);
 
       const indexPath = path.join(distPath, 'index.html');
       if (fs.existsSync(indexPath)) {
         const rawIndex = fs.readFileSync(indexPath, 'utf8');
+
+        if (isPrivateClientRoute) {
+          // Account pages: real app shell, but never indexed by search engines.
+          res.setHeader('Content-Type', 'text/html; charset=utf-8');
+          res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+          return res.status(200).send(rawIndex.replace('</head>', '<meta name="robots" content="noindex, nofollow" />\n  </head>'));
+        }
 
         if (isKnownRoute) {
           const renderedHtml = injectSeoMetadata(rawIndex, cleanPath);

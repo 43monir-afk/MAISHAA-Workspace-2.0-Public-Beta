@@ -143,6 +143,19 @@ VITE_AI_API_ENDPOINT="/api/ai/command"
 
 ---
 
+## Accounts, Free / Pro, Admin panel & Desktop app
+
+* **Sign in / Account / Pricing / Contact / Download / Admin** pages are built into the app (`/signin`, `/account`, `/pricing`, `/contact`, `/download`, `/admin`).
+* **Free vs Pro** is configured in one file: `src/config/plans.ts` (AI daily limits, which modules/PDF tabs are Pro, pricing table).
+  AI limits are enforced on the server (`server/express.ts → requireFeature`). Browser-only tools (PDF, images...) can only be soft-locked in the UI.
+* **Pro keys** are created in *Admin → Licence keys* (`MSHA-XXXXX-XXXXX-XXXXX-XXXXX`), sent to the customer manually after payment (no payment gateway yet).
+  The customer enters it on *Account* (web) or in the desktop app (*Pro → Activate Pro key*). Keys are stored hashed; the plain key is shown once at creation.
+* **Admin account**: set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in the environment, restart, then sign in. Admin can create/revoke keys, grant Pro to a user, reset passwords, read contact messages, and set the desktop download links.
+* **Data** is a JSON file in `DATA_DIR` (default `./data`). On Render add a persistent Disk and point `DATA_DIR` at it, otherwise data is lost on every deploy. Single instance only.
+* **Contact form** messages are stored and shown in the admin panel (no email sending yet).
+* **Desktop app**: see `desktop/README.md` (Electron, built on a Windows PC; upload the .exe to GitHub Releases and paste the link in *Admin → Settings*).
+* Server tests: `npm run test:server` (Node's built-in test runner).
+
 ## Release Packaging (MAISHAA-Workspace-2.zip)
 
 To generate a clean, production-ready distribution archive:

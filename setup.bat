@@ -5,7 +5,7 @@ setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
 echo ===============================================================
-echo   MAISHAA WORKSPACE 2 — Windows Automated Setup
+echo   MAISHAA WORKSPACE 2 - Windows Automated Setup
 echo   Browser-First Local and Private Office Productivity Suite
 echo ===============================================================
 echo.
