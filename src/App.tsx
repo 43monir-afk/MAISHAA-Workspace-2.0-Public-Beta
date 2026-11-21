@@ -5,6 +5,14 @@
 
 import React from 'react';
 import { WorkspaceProvider, useWorkspace } from './context/WorkspaceContext';
+import { AuthProvider } from './context/AuthContext';
+import { ProGate } from './components/site/ProGate';
+import { AuthPage } from './components/site/AuthPage';
+import { AccountPage } from './components/site/AccountPage';
+import { PricingPage } from './components/site/PricingPage';
+import { ContactPage } from './components/site/ContactPage';
+import { DownloadPage } from './components/site/DownloadPage';
+import { AdminPage } from './components/site/AdminPage';
 import { Header } from './components/common/Header';
 import { Sidebar } from './components/common/Sidebar';
 import { UniversalWorkspace } from './components/universal/UniversalWorkspace';
@@ -48,6 +56,9 @@ import {
   Scissors,
   Palette,
   PenTool,
+  Crown,
+  Download,
+  Mail,
 } from 'lucide-react';
 
 const WorkspaceShell: React.FC = () => {
@@ -69,6 +80,9 @@ const WorkspaceShell: React.FC = () => {
     { id: 'ai_command', label: t.nav.aiCommandCenter, icon: Sparkles },
     { id: 'batch', label: t.nav.batchStudio, icon: Layers },
     { id: 'convert', label: t.nav.convertStudio, icon: ArrowRightLeft },
+    { id: 'pricing', label: 'Pricing', icon: Crown },
+    { id: 'download', label: 'Download', icon: Download },
+    { id: 'contact', label: 'Contact', icon: Mail },
   ];
 
   return (
@@ -123,12 +137,24 @@ const WorkspaceShell: React.FC = () => {
           {activeModule === 'sheet_intel' && <SpreadsheetIntelStudio />}
           {activeModule === 'slides_intel' && <PresentationIntelStudio />}
           {activeModule === 'forms' && <BangladeshFormsHub />}
-          {activeModule === 'office_pack' && <OneClickOfficePack />}
-          {activeModule === 'ai_command' && <AiCommandCenter />}
-          {activeModule === 'batch' && <BatchStudio />}
+          {activeModule === 'office_pack' && (
+            <ProGate name="Office Pack"><OneClickOfficePack /></ProGate>
+          )}
+          {activeModule === 'ai_command' && (
+            <ProGate name="AI Command Center"><AiCommandCenter /></ProGate>
+          )}
+          {activeModule === 'batch' && (
+            <ProGate name="Batch Processing"><BatchStudio /></ProGate>
+          )}
           {activeModule === 'convert' && <ConvertStudio />}
           {activeModule === 'ai_future' && <AiCloudStudio />}
           {activeModule === 'tutorials' && <TutorialsHub />}
+          {activeModule === 'pricing' && <PricingPage />}
+          {activeModule === 'contact' && <ContactPage />}
+          {activeModule === 'download' && <DownloadPage />}
+          {activeModule === 'signin' && <AuthPage />}
+          {activeModule === 'account' && <AccountPage />}
+          {activeModule === 'admin' && <AdminPage />}
 
           {/* Transient notification toast */}
           {notification && (
@@ -156,8 +182,10 @@ const WorkspaceShell: React.FC = () => {
 
 export default function App() {
   return (
-    <WorkspaceProvider>
-      <WorkspaceShell />
-    </WorkspaceProvider>
+    <AuthProvider>
+      <WorkspaceProvider>
+        <WorkspaceShell />
+      </WorkspaceProvider>
+    </AuthProvider>
   );
 }

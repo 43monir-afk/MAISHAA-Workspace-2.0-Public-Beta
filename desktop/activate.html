@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+<title>Activate Pro</title>
+<style>
+  body { margin: 0; font-family: Segoe UI, system-ui, sans-serif; background: #0b1329; color: #e2e8f0; display: flex; align-items: center; justify-content: center; height: 100vh; }
+  main { width: 100%; max-width: 380px; padding: 24px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p { color: #94a3b8; font-size: 13px; line-height: 1.5; margin: 0 0 18px; }
+  label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; }
+  input { width: 100%; box-sizing: border-box; padding: 11px 12px; border-radius: 10px; border: 1px solid #334155; background: #1e293b; color: #fff; font: 14px ui-monospace, Consolas, monospace; letter-spacing: .5px; }
+  input:focus { outline: 2px solid #2dd4bf55; border-color: #2dd4bf; }
+  .row { display: flex; gap: 10px; margin-top: 16px; }
+  button { flex: 1; padding: 11px; border-radius: 10px; border: 0; font-weight: 700; font-size: 13px; cursor: pointer; }
+  #go { background: #14b8a6; color: #04111a; } #go:disabled { opacity: .5; cursor: default; }
+  #cancel { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; }
+  #msg { margin-top: 14px; font-size: 12px; min-height: 18px; color: #fda4af; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Activate Pro</h1>
+  <p>Enter the licence key you received by email. One key works on a limited number of PCs.</p>
+  <form id="f">
+    <label for="key">Licence key</label>
+    <input id="key" autocomplete="off" spellcheck="false" placeholder="MSHA-XXXXX-XXXXX-XXXXX-XXXXX" />
+    <div class="row">
+      <button type="button" id="cancel">Cancel</button>
+      <button type="submit" id="go">Activate</button>
+    </div>
+    <div id="msg" role="alert"></div>
+  </form>
+</main>
+<script>
+  const f = document.getElementById('f'), key = document.getElementById('key'), go = document.getElementById('go'), msg = document.getElementById('msg');
+  document.getElementById('cancel').onclick = () => window.maishaa.close();
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    go.disabled = true; msg.textContent = 'Checking…'; msg.style.color = '#94a3b8';
+    const r = await window.maishaa.activate(key.value);
+    go.disabled = false;
+    msg.style.color = '#fda4af';
+    msg.textContent = r.ok ? '' : r.error;
+  };
+  key.focus();
+</script>
+</body>
+</html>

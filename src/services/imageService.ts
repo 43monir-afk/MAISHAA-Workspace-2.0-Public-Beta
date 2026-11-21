@@ -1,4 +1,5 @@
 import { validateFileInput } from '../utils/privacy';
+import { removeBackground } from './bgRemoverService';
 
 export interface ImageProcessResult {
   blob: Blob;
@@ -364,21 +365,57 @@ export async function convertImage(
 }
 
 export interface BgRemovalOptions {
+  provider?: 'ai_segmentation' | 'legacy_color' | 'local' | 'cloud_removebg' | 'cloud_gemini';
   tolerance?: number; // 5 to 100, default 38
   featherRadius?: number; // 0 to 10, default 2
   smartAlpha?: boolean; // intelligent perimeter flood-fill & saliency matting
+  modelVariant?: 'small' | 'medium' | 'large';
+  edgeSmoothing?: number;
+  removeIslands?: boolean;
+  holeCorrection?: boolean;
 }
 
 /**
- * High-fidelity client-side background removal.
- * Preserves 100% of the subject's original RGB colors, applies clean alpha masking to the background,
- * and outputs a genuine transparent PNG.
+ * Universal Background Removal Engine.
+ * Defaults to client-side Pretrained Deep Neural Segmentation (MediaPipe & IS-Net),
+ * completely isolating person foregrounds (head, hair, clothes, limbs) without leaving
+ * background walls, ground, or vegetation. Supports legacy color tolerance as an option.
  */
 export async function removeImageBackground(
   file: File,
   options: BgRemovalOptions = {}
 ): Promise<ImageProcessResult> {
   const img = await loadImageFromFile(file);
+  const provider = options.provider || 'ai_segmentation';
+
+  // 1. DEFAULT: True Pretrained Deep Learning AI Segmentation
+  if (provider === 'ai_segmentation') {
+    const aiResult = await removeBackground(file, img, {
+      provider: 'ai_segmentation',
+      modelVariant: options.modelVariant || 'small',
+      edgeSmoothing: options.edgeSmoothing ?? 1,
+      removeIslands: options.removeIslands ?? true,
+      holeCorrection: options.holeCorrection ?? true,
+      tolerance: options.tolerance ?? 38,
+      featherRadius: options.featherRadius ?? 2,
+      smartAlpha: options.smartAlpha ?? true,
+    });
+
+    return {
+      blob: aiResult.blob,
+      originalSize: file.size,
+      newSize: aiResult.blob.size,
+      width: aiResult.cutoutCanvas.width,
+      height: aiResult.cutoutCanvas.height,
+      format: 'image/png',
+      reductionPercentage:
+        file.size > 0
+          ? Math.max(0, Math.round(((file.size - aiResult.blob.size) / file.size) * 100))
+          : 0,
+    };
+  }
+
+  // 2. Legacy Color-Tolerance Mode (for flat single-color studio backgrounds)
   const canvas = document.createElement('canvas');
   canvas.width = Math.max(1, img.naturalWidth || 1);
   canvas.height = Math.max(1, img.naturalHeight || 1);
@@ -400,25 +437,24 @@ export async function removeImageBackground(
   const alphaMask = new Uint8Array(totalPixels);
   alphaMask.fill(255);
 
-  // Perceptual color distance helper (Redmean metric approximating CIELAB Delta-E)
   const calcDist = (r1: number, g1: number, b1: number, r2: number, g2: number, b2: number): number => {
     const rmean = (r1 + r2) * 0.5;
     const dr = r1 - r2;
     const dg = g1 - g2;
     const db = b1 - b2;
-    return Math.sqrt(
-      ((512 + rmean) * dr * dr) / 256 +
-      4 * dg * dg +
-      ((767 - rmean) * db * db) / 256
-    ) / 3;
+    return (
+      Math.sqrt(
+        ((512 + rmean) * dr * dr) / 256 +
+          4 * dg * dg +
+          ((767 - rmean) * db * db) / 256
+      ) / 3
+    );
   };
 
-  // 1. Gather perimeter samples to model the background color distribution
   const borderSamples: Array<{ r: number; g: number; b: number }> = [];
   const stepX = Math.max(1, Math.floor(w / 32));
   const stepY = Math.max(1, Math.floor(h / 32));
 
-  // Top and bottom borders
   for (let x = 0; x < w; x += stepX) {
     const topIdx = x * 4;
     const botIdx = ((h - 1) * w + x) * 4;
@@ -426,7 +462,6 @@ export async function removeImageBackground(
     borderSamples.push({ r: data[botIdx], g: data[botIdx + 1], b: data[botIdx + 2] });
   }
 
-  // Left and right borders
   for (let y = 0; y < h; y += stepY) {
     const leftIdx = (y * w) * 4;
     const rightIdx = (y * w + (w - 1)) * 4;
@@ -434,7 +469,6 @@ export async function removeImageBackground(
     borderSamples.push({ r: data[rightIdx], g: data[rightIdx + 1], b: data[rightIdx + 2] });
   }
 
-  // Extract representative background seeds (median + gradient endpoints)
   const bgCentroids: Array<{ r: number; g: number; b: number }> = [];
   if (borderSamples.length > 0) {
     const sortedR = [...borderSamples].sort((a, b) => a.r - b.r);
@@ -473,10 +507,6 @@ export async function removeImageBackground(
   };
 
   if (smartAlpha) {
-    // Stage 2: Saliency Prior & Connected Boundary Flood Fill (MODNet / U2Net style)
-    // Only pixels connected to the outer perimeter that match the background palette are removed.
-    // Interior pixels of the subject (eyes, shirt, jewelry) will NOT be reached,
-    // completely preventing the inverted mask / negative artifact!
     const visited = new Uint8Array(totalPixels);
     const queue: number[] = [];
 
@@ -491,7 +521,6 @@ export async function removeImageBackground(
       }
     };
 
-    // Seed perimeter
     for (let x = 0; x < w; x++) {
       checkAndSeed(x, 0);
       checkAndSeed(x, h - 1);
@@ -501,11 +530,10 @@ export async function removeImageBackground(
       checkAndSeed(w - 1, y);
     }
 
-    // Breadth-First Flood Fill
     let head = 0;
     while (head < queue.length) {
       const curr = queue[head++];
-      alphaMask[curr] = 0; // Confirmed background pixel
+      alphaMask[curr] = 0;
 
       const cx = curr % w;
       const cy = Math.floor(curr / w);
@@ -530,7 +558,6 @@ export async function removeImageBackground(
       }
     }
 
-    // Stage 3: Morphological closing of small pinhole gaps in foreground
     for (let y = 1; y < h - 1; y++) {
       for (let x = 1; x < w - 1; x++) {
         const idx = y * w + x;
@@ -547,7 +574,6 @@ export async function removeImageBackground(
       }
     }
   } else {
-    // Standard Global Color Distance Mode
     for (let i = 0; i < totalPixels; i++) {
       const pData = i * 4;
       const dist = getMinBgDist(data[pData], data[pData + 1], data[pData + 2]);
@@ -557,7 +583,6 @@ export async function removeImageBackground(
     }
   }
 
-  // Stage 4: Soft Edge Feathering (Anti-Aliasing along hair and silhouette)
   if (feather > 0) {
     const smoothedMask = new Uint8Array(totalPixels);
     smoothedMask.set(alphaMask);
@@ -599,11 +624,18 @@ export async function removeImageBackground(
     alphaMask.set(smoothedMask);
   }
 
-  // Stage 5: Apply to Alpha Channel ONLY
-  // Absolutely preserve original RGB values: data[i*4], data[i*4+1], data[i*4+2] remain 100% UNTOUCHED!
+  // Apply to Alpha Channel and zero out transparent pixels to minimize PNG file size
   for (let i = 0; i < totalPixels; i++) {
     const pData = i * 4;
-    data[pData + 3] = alphaMask[i];
+    const a = alphaMask[i];
+    if (a === 0) {
+      data[pData] = 0;
+      data[pData + 1] = 0;
+      data[pData + 2] = 0;
+      data[pData + 3] = 0;
+    } else {
+      data[pData + 3] = a;
+    }
   }
 
   ctx.putImageData(imgData, 0, 0);
@@ -622,7 +654,8 @@ export async function removeImageBackground(
     width: canvas.width,
     height: canvas.height,
     format: 'image/png',
-    reductionPercentage: 0,
+    reductionPercentage:
+      file.size > 0 ? Math.max(0, Math.round(((file.size - blob.size) / file.size) * 100)) : 0,
   };
 }
 

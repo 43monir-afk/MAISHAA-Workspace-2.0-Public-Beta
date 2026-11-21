@@ -1,0 +1,24 @@
+{
+  "name": "maishaa-workspace-desktop",
+  "productName": "MAISHAA WORKSPACE",
+  "version": "1.0.0",
+  "description": "Windows desktop app for MAISHAA WORKSPACE (Free mode + Pro licence key)",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --x64"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "bd.maishaa.workspace",
+    "productName": "MAISHAA WORKSPACE",
+    "files": ["main.js", "preload.js", "activate.html", "icon.png", "package.json"],
+    "directories": { "output": "release" },
+    "win": { "target": ["nsis"], "icon": "icon.png" },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }
+  }
+}

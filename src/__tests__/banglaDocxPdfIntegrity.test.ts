@@ -7,7 +7,7 @@
  * 3. Bangla-capable OpenType shaping embeds Noto Sans Bengali with complete ToUnicode CMap.
  * 4. Complex Bangla conjuncts (ক্ষ, জ্ঞ, ত্র, শ্র, ক্ত, ন্দ্র, প্র, গ্র, ক্র) and vowel signs render accurately.
  * 5. PDF text extraction verification: extracted PDF text contains the original Unicode strings.
- * 6. End-to-end Unicode preservation using a synthetic fixture.
+ * 6. Reproduction test fixture for "Farjana Islam Dina - Finland_MODIFIED.docx".
  */
 
 import { describe, it, expect } from 'vitest';
@@ -27,7 +27,7 @@ import {
  */
 async function createTestDocxFile(
   paragraphs: string[],
-  filename = 'demo-fixture.docx'
+  filename = 'Farjana Islam Dina - Finland_MODIFIED.docx'
 ): Promise<File> {
   const zip = new JSZip();
 
@@ -72,37 +72,37 @@ describe('Word-to-PDF Bangla Unicode Integrity Suite', () => {
     });
 
     it('merges Word text runs that split a single Bangla word across multiple <w:r> elements without inserting spaces', async () => {
-      // Simulate Word splitting "নমুনা" across runs: "নমু" + "না"
+      // Simulate Word splitting "ফারজানা" across runs: "ফার" + "জানা"
       const docxFile = await createTestDocxFile([
-        '<w:r><w:t>নমু</w:t></w:r><w:r><w:t>না </w:t></w:r><w:r><w:t>ব্যক্তি</w:t></w:r>',
+        '<w:r><w:t>ফার</w:t></w:r><w:r><w:t>জানা </w:t></w:r><w:r><w:t>ইসলাম দিনা</w:t></w:r>',
       ]);
 
       const buffer = await docxFile.arrayBuffer();
       const extracted = await extractDocxOpenXmlText(buffer);
 
-      expect(extracted.text).toContain('নমুনা ব্যক্তি');
-      expect(extracted.text).not.toContain('নমু না');
+      expect(extracted.text).toContain('ফারজানা ইসলাম দিনা');
+      expect(extracted.text).not.toContain('ফার জানা');
       expect(extracted.text).not.toContain('FFFFF');
     });
 
     it('extracts multi-run mixed content with dates, numbers, and punctuation accurately', async () => {
       const docxFile = await createTestDocxFile([
-        '<w:r><w:t>Reference No. </w:t></w:r><w:r><w:t>TEST-000001</w:t></w:r>',
-        '<w:r><w:t>তারিখ: </w:t></w:r><w:r><w:t>০১ জানুয়ারি ২০০০</w:t></w:r>',
-        '<w:r><w:t>বর্তমান ঠিকানা: নমুনা শহর, স্থায়ী ঠিকানা: নমুনা জেলা</w:t></w:r>',
+        '<w:r><w:t>Reference No. </w:t></w:r><w:r><w:t>3247-006149</w:t></w:r>',
+        '<w:r><w:t>তারিখ: </w:t></w:r><w:r><w:t>১৬ ফেব্রুয়ারি ২০২৬</w:t></w:r>',
+        '<w:r><w:t>বর্তমান ঠিকানা: ঢাকা, স্থায়ী ঠিকানা: চট্টগ্রাম</w:t></w:r>',
       ]);
 
       const analysis = await parseDocxDocument(docxFile);
-      expect(analysis.extractedText).toContain('Reference No. TEST-000001');
-      expect(analysis.extractedText).toContain('তারিখ: ০১ জানুয়ারি ২০০০');
-      expect(analysis.extractedText).toContain('বর্তমান ঠিকানা: নমুনা শহর');
-      expect(analysis.extractedText).toContain('স্থায়ী ঠিকানা: নমুনা জেলা');
+      expect(analysis.extractedText).toContain('Reference No. 3247-006149');
+      expect(analysis.extractedText).toContain('তারিখ: ১৬ ফেব্রুয়ারি ২০২৬');
+      expect(analysis.extractedText).toContain('বর্তমান ঠিকানা: ঢাকা');
+      expect(analysis.extractedText).toContain('স্থায়ী ঠিকানা: চট্টগ্রাম');
     });
   });
 
   describe('2. Pre-Render Validation & Unicode Integrity Check', () => {
     it('throws the expected error if extracted Bangla text contains corrupted FFFFFF sequences', () => {
-      const corruptedText = 'নমুনা ব্যক্তি FFFFFFF FFFFF পিতা মাতা';
+      const corruptedText = 'ফারজানা ইসলাম FFFFFFF FFFFF পিতা মাতা';
       expect(() => {
         validateUnicodeExtraction(corruptedText, 'test.docx');
       }).toThrow('Bangla text extraction failed. PDF was not generated to prevent corrupted output.');
@@ -122,7 +122,7 @@ describe('Word-to-PDF Bangla Unicode Integrity Suite', () => {
 
     it('passes clean Unicode text without throwing', () => {
       expect(() => {
-        validateUnicodeExtraction('নমুনা আবেদনকারী — পিতা: করিম, মাতা: রহিমা, তারিখ: ০১ জানুয়ারি ২০০০');
+        validateUnicodeExtraction('ফারজানা ইসলাম দিনা — পিতা: করিম, মাতা: রহিমা, তারিখ: ১৬ ফেব্রুয়ারি ২০২৬');
       }).not.toThrow();
     });
   });
@@ -156,15 +156,15 @@ describe('Word-to-PDF Bangla Unicode Integrity Suite', () => {
 
     it('renders real Bangla administrative and personal identity strings accurately', async () => {
       const testDocument = `# প্রত্যয়নপত্র\n\n` +
-        `নাম: নমুনা আবেদনকারী\n` +
-        `পিতা: নমুনা ব্যক্তি\n` +
-        `মাতা: নমুনা ব্যক্তি\n` +
-        `বর্তমান ঠিকানা: নমুনা শহর\n` +
-        `স্থায়ী ঠিকানা: নমুনা জেলা\n` +
-        `তারিখ: ০১ জানুয়ারি ২০০০\n` +
+        `নাম: ফারজানা ইসলাম দিনা\n` +
+        `পিতা: মোহাম্মদ আলী\n` +
+        `মাতা: জাহানারা বেগম\n` +
+        `বর্তমান ঠিকানা: ধানমন্ডি, ঢাকা\n` +
+        `স্থায়ী ঠিকানা: চকবাজার, চট্টগ্রাম\n` +
+        `তারিখ: ১৬ ফেব্রুয়ারি ২০২৬\n` +
         `দেশ: বাংলাদেশ\n` +
-        `Reference No. TEST-000001\n` +
-        `City: Sample City, Bangladesh`;
+        `Reference No. 3247-006149\n` +
+        `City: Dhaka, Bangladesh`;
 
       const exportResult = await exportToPdf(testDocument, {
         title: 'প্রত্যয়নপত্র',
@@ -175,38 +175,38 @@ describe('Word-to-PDF Bangla Unicode Integrity Suite', () => {
       const extracted = await extractPdfText(pdfFile);
 
       expect(extracted.fullText).not.toContain('FFFFF');
-      expect(extracted.fullText).toContain('নমুনা আবেদনকারী');
+      expect(extracted.fullText).toContain('ফারজানা ইসলাম দিনা');
       expect(extracted.fullText).toContain('পিতা');
       expect(extracted.fullText).toContain('মাতা');
       expect(extracted.fullText).toContain('বর্তমান ঠিকানা');
       expect(extracted.fullText).toContain('স্থায়ী ঠিকানা');
-      expect(extracted.fullText).toContain('০১ জানুয়ারি ২০০০');
+      expect(extracted.fullText).toContain('১৬ ফেব্রুয়ারি ২০২৬');
       expect(extracted.fullText).toContain('বাংলাদেশ');
-      expect(extracted.fullText).toContain('Reference No. TEST-000001');
-      expect(extracted.fullText).toContain('Sample City, Bangladesh');
+      expect(extracted.fullText).toContain('Reference No. 3247-006149');
+      expect(extracted.fullText).toContain('Dhaka, Bangladesh');
     });
   });
 
-  describe('4. Full End-to-End Word-to-PDF Conversion (Sample Applicant Fixture)', () => {
-    it('converts demo-applicant-fi-fixture.docx to PDF with complete Unicode preservation', async () => {
+  describe('4. Full End-to-End Word-to-PDF Conversion (Farjana Islam Dina Fixture)', () => {
+    it('converts Farjana Islam Dina - Finland_MODIFIED.docx to PDF with complete Unicode preservation', async () => {
       const docxFile = await createTestDocxFile(
         [
-          '<w:r><w:t>Curriculum Vitae — Sample Applicant</w:t></w:r>',
-          '<w:r><w:t>নাম: নমুনা আবেদনকারী</w:t></w:r>',
-          '<w:r><w:t>পিতা: নমুনা ব্যক্তি</w:t></w:r>',
-          '<w:r><w:t>মাতা: নমুনা ব্যক্তি</w:t></w:r>',
-          '<w:r><w:t>বর্তমান ঠিকানা: নমুনা শহর, বাংলাদেশ</w:t></w:r>',
-          '<w:r><w:t>স্থায়ী ঠিকানা: নমুনা জেলা, বাংলাদেশ</w:t></w:r>',
-          '<w:r><w:t>তারিখ: ০১ জানুয়ারি ২০০০</w:t></w:r>',
-          '<w:r><w:t>Reference No. TEST-000001</w:t></w:r>',
-          '<w:r><w:t>Destination: Sample City, Finland</w:t></w:r>',
+          '<w:r><w:t>Curriculum Vitae — Farjana Islam Dina</w:t></w:r>',
+          '<w:r><w:t>নাম: ফারজানা ইসলাম দিনা</w:t></w:r>',
+          '<w:r><w:t>পিতা: রফিকুল ইসলাম</w:t></w:r>',
+          '<w:r><w:t>মাতা: সালেহা বেগম</w:t></w:r>',
+          '<w:r><w:t>বর্তমান ঠিকানা: ঢাকা, বাংলাদেশ</w:t></w:r>',
+          '<w:r><w:t>স্থায়ী ঠিকানা: সিলেট, বাংলাদেশ</w:t></w:r>',
+          '<w:r><w:t>তারিখ: ১৬ ফেব্রুয়ারি ২০২৬</w:t></w:r>',
+          '<w:r><w:t>Reference No. 3247-006149</w:t></w:r>',
+          '<w:r><w:t>Destination: Helsinki, Finland</w:t></w:r>',
         ],
-        'demo-applicant-fi-fixture.docx'
+        'Farjana Islam Dina - Finland_MODIFIED.docx'
       );
 
       const convResult = await convertDocxToPdf(docxFile);
 
-      expect(convResult.outputFilename).toBe('demo-applicant-fi-fixture-converted.pdf');
+      expect(convResult.outputFilename).toBe('Farjana Islam Dina - Finland_MODIFIED-converted.pdf');
       expect(convResult.blob.size).toBeGreaterThan(1000);
 
       // Verify text extracted back from the converted PDF
@@ -216,14 +216,14 @@ describe('Word-to-PDF Bangla Unicode Integrity Suite', () => {
       // The extracted PDF text MUST contain original Bangla and English, NEVER FFFFF
       expect(extracted.fullText).not.toContain('FFFFF');
       expect(extracted.fullText).not.toContain('????');
-      expect(extracted.fullText).toContain('নমুনা আবেদনকারী');
+      expect(extracted.fullText).toContain('ফারজানা ইসলাম দিনা');
       expect(extracted.fullText).toContain('পিতা');
       expect(extracted.fullText).toContain('মাতা');
       expect(extracted.fullText).toContain('বর্তমান ঠিকানা');
       expect(extracted.fullText).toContain('স্থায়ী ঠিকানা');
-      expect(extracted.fullText).toContain('০১ জানুয়ারি ২০০০');
+      expect(extracted.fullText).toContain('১৬ ফেব্রুয়ারি ২০২৬');
       expect(extracted.fullText).toContain('বাংলাদেশ');
-      expect(extracted.fullText).toContain('Reference No. TEST-000001');
+      expect(extracted.fullText).toContain('Reference No. 3247-006149');
     });
   });
 });

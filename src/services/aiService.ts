@@ -28,6 +28,21 @@ export interface AiTranslateResponse {
 
 const MAX_SAFE_CHARS = 30000;
 
+/** Thrown when the server refuses an AI call because of sign-in / plan / daily limit. */
+export class AiAccessError extends Error {
+  constructor(message: string, public code: 'LOGIN_REQUIRED' | 'PRO_REQUIRED' | 'LIMIT_REACHED' | 'TOO_LARGE', public httpStatus: number) {
+    super(message);
+    this.name = 'AiAccessError';
+  }
+}
+
+function throwIfAccessDenied(status: number, errData: any): void {
+  const code = errData?.code;
+  if (code === 'LOGIN_REQUIRED' || code === 'PRO_REQUIRED' || code === 'LIMIT_REACHED' || code === 'TOO_LARGE') {
+    throw new AiAccessError(errData.error || 'Access denied', code, status);
+  }
+}
+
 /**
  * Check whether server has a valid AI provider configured.
  */
@@ -95,6 +110,7 @@ export async function requestDocumentAi(
 
   if (!res.ok) {
     const errData = await res.json().catch(() => ({}));
+    throwIfAccessDenied(res.status, errData);
     if (res.status === 503 || errData.status === 'NOT_CONFIGURED') {
       throw new Error(errData.error || 'AI Assistant বর্তমানে কনফিগার করা নেই। (AI Assistant not configured)');
     }
@@ -135,6 +151,7 @@ export async function requestAiTranslation(
 
   if (!res.ok) {
     const errData = await res.json().catch(() => ({}));
+    throwIfAccessDenied(res.status, errData);
     if (res.status === 503 || errData.status === 'NOT_CONFIGURED') {
       throw new Error(errData.error || 'AI Translation বর্তমানে কনফিগার করা নেই।');
     }

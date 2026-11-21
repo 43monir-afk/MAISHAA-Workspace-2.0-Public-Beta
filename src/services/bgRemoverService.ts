@@ -12,6 +12,7 @@ import {
   BatchManifestItem,
 } from '../types/bgRemover';
 import { generateSafeOutputFilename } from '../utils/fileDetection';
+import { executeRealAiSegmentation } from './aiSegmentationService';
 
 const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB
 const SUPPORTED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
@@ -304,9 +305,18 @@ export async function executeLocalBgRemoval(
     alphaMask.set(smoothed);
   }
 
-  // 5. Apply the mask ONLY to the alpha channel (preserve 100% original RGB colors!)
+  // 5. Apply the mask to alpha channel (zero out transparent RGB to optimize PNG size)
   for (let i = 0; i < totalPixels; i++) {
-    data[i * 4 + 3] = alphaMask[i];
+    const a = alphaMask[i];
+    const p = i * 4;
+    if (a === 0) {
+      data[p] = 0;
+      data[p + 1] = 0;
+      data[p + 2] = 0;
+      data[p + 3] = 0;
+    } else {
+      data[p + 3] = a;
+    }
   }
 
   ctx.putImageData(imgData, 0, 0);
@@ -342,29 +352,334 @@ export async function executeLocalBgRemoval(
 }
 
 /**
- * Universal Background Removal Dispatcher (Local + Server fallback).
+ * Edge smoothing algorithm that softens boundary transitions while preserving fine details.
  */
-export async function removeBackground(
-  file: File,
+export function applyMaskEdgeSmoothing(
+  alphaMask: Uint8Array,
+  width: number,
+  height: number,
+  radius = 2
+): Uint8Array {
+  if (radius <= 0) return alphaMask;
+  const smoothed = new Uint8Array(alphaMask);
+  const r = Math.min(4, Math.max(1, radius));
+
+  for (let y = r; y < height - r; y++) {
+    for (let x = r; x < width - r; x++) {
+      const idx = y * width + x;
+      const val = alphaMask[idx];
+      // Only process transition edge pixels
+      if (val > 5 && val < 250) {
+        let sum = 0;
+        let count = 0;
+        for (let dy = -r; dy <= r; dy++) {
+          for (let dx = -r; dx <= r; dx++) {
+            sum += alphaMask[(y + dy) * width + (x + dx)];
+            count++;
+          }
+        }
+        smoothed[idx] = Math.round(sum / count);
+      }
+    }
+  }
+  return smoothed;
+}
+
+/**
+ * Removes small disconnected background specks/islands without touching legitimate subject details.
+ */
+export function applySmallIslandRemoval(
+  alphaMask: Uint8Array,
+  width: number,
+  height: number,
+  minIslandArea = 80
+): Uint8Array {
+  const totalPixels = width * height;
+  const visited = new Uint8Array(totalPixels);
+  const cleaned = new Uint8Array(alphaMask);
+
+  for (let i = 0; i < totalPixels; i++) {
+    // Only examine pixels detected as foreground
+    if (alphaMask[i] > 30 && !visited[i]) {
+      const component: number[] = [];
+      const queue: number[] = [i];
+      visited[i] = 1;
+
+      while (queue.length > 0) {
+        const curr = queue.pop()!;
+        component.push(curr);
+        const cx = curr % width;
+        const cy = Math.floor(curr / width);
+
+        const neighbors = [
+          cx > 0 ? curr - 1 : -1,
+          cx < width - 1 ? curr + 1 : -1,
+          cy > 0 ? curr - width : -1,
+          cy < height - 1 ? curr + width : -1,
+        ];
+
+        for (const n of neighbors) {
+          if (n !== -1 && !visited[n] && alphaMask[n] > 30) {
+            visited[n] = 1;
+            queue.push(n);
+          }
+        }
+      }
+
+      // If the component is a tiny floating noise speck, erase it
+      if (component.length < minIslandArea) {
+        for (const p of component) {
+          cleaned[p] = 0;
+        }
+      }
+    }
+  }
+
+  return cleaned;
+}
+
+/**
+ * Fills small accidental interior holes within solid subjects (e.g. clothing, torso)
+ * while preserving natural gaps (e.g. space between arm and torso).
+ */
+export function applyHoleCorrection(
+  alphaMask: Uint8Array,
+  width: number,
+  height: number,
+  maxHoleArea = 120
+): Uint8Array {
+  const totalPixels = width * height;
+  const visited = new Uint8Array(totalPixels);
+  const corrected = new Uint8Array(alphaMask);
+
+  for (let i = 0; i < totalPixels; i++) {
+    // Look for background holes (alpha < 50)
+    if (alphaMask[i] < 50 && !visited[i]) {
+      const component: number[] = [];
+      const queue: number[] = [i];
+      let touchesBorder = false;
+      visited[i] = 1;
+
+      while (queue.length > 0) {
+        const curr = queue.pop()!;
+        component.push(curr);
+        const cx = curr % width;
+        const cy = Math.floor(curr / width);
+
+        if (cx === 0 || cx === width - 1 || cy === 0 || cy === height - 1) {
+          touchesBorder = true;
+        }
+
+        const neighbors = [
+          cx > 0 ? curr - 1 : -1,
+          cx < width - 1 ? curr + 1 : -1,
+          cy > 0 ? curr - width : -1,
+          cy < height - 1 ? curr + width : -1,
+        ];
+
+        for (const n of neighbors) {
+          if (n !== -1 && !visited[n] && alphaMask[n] < 50) {
+            visited[n] = 1;
+            queue.push(n);
+          }
+        }
+      }
+
+      // If hole does not touch the canvas boundary and is enclosed and small, fill it
+      if (!touchesBorder && component.length <= maxHoleArea) {
+        for (const p of component) {
+          corrected[p] = 255;
+        }
+      }
+    }
+  }
+
+  return corrected;
+}
+
+/**
+ * Reconstructs cutoutCanvas from pristine originalImage and current alphaMask.
+ * Preserves 100% of original foreground RGB color and texture.
+ */
+export function reconstructCutoutFromAlphaMask(
+  cutoutCanvas: HTMLCanvasElement,
+  originalImage: HTMLImageElement,
+  alphaMask: Uint8Array
+): void {
+  const w = cutoutCanvas.width;
+  const h = cutoutCanvas.height;
+  const ctx = cutoutCanvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return;
+
+  // Draw pristine original RGB pixels
+  ctx.clearRect(0, 0, w, h);
+  ctx.drawImage(originalImage, 0, 0, w, h);
+  const imgData = ctx.getImageData(0, 0, w, h);
+  const data = imgData.data;
+
+  // Apply alpha mask directly and zero out transparent pixels for optimal PNG compression
+  const total = w * h;
+  for (let i = 0; i < total; i++) {
+    const a = alphaMask[i];
+    const p = i * 4;
+    if (a === 0) {
+      data[p] = 0;
+      data[p + 1] = 0;
+      data[p + 2] = 0;
+      data[p + 3] = 0;
+    } else {
+      data[p + 3] = a;
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+}
+
+/**
+ * Resets an item's current mask back to its original AI segmentation mask.
+ */
+export function resetToOriginalMask(item: BgImageItem): void {
+  if (!item.originalAlphaMask || !item.alphaMask || !item.cutoutCanvas || !item.originalImage) return;
+  item.alphaMask.set(item.originalAlphaMask);
+  reconstructCutoutFromAlphaMask(item.cutoutCanvas, item.originalImage, item.alphaMask);
+
+  // Update mask canvas if present
+  if (item.maskCanvas) {
+    const maskCtx = item.maskCanvas.getContext('2d');
+    if (maskCtx) {
+      const w = item.maskCanvas.width;
+      const h = item.maskCanvas.height;
+      const mData = maskCtx.createImageData(w, h);
+      for (let i = 0; i < w * h; i++) {
+        const a = item.alphaMask[i];
+        mData.data[i * 4] = a;
+        mData.data[i * 4 + 1] = a;
+        mData.data[i * 4 + 2] = a;
+        mData.data[i * 4 + 3] = 255;
+      }
+      maskCtx.putImageData(mData, 0, 0);
+    }
+  }
+}
+
+/**
+ * Pretrained AI Subject Segmentation (IS-Net salient object & person segmentation).
+ * Runs completely in the browser via WebAssembly / ONNX neural inference,
+ * producing pixel-accurate foreground subject cutouts (head, hair, clothes, limbs)
+ * while removing complex walls, floors, vegetation, and backgrounds.
+ */
+export async function executeAiBgRemoval(
+  file: File | Blob,
   imgElement: HTMLImageElement,
-  options: BgRemovalOptions
+  options: BgRemovalOptions = { provider: 'ai_segmentation' }
 ): Promise<{
   blob: Blob;
   cutoutCanvas: HTMLCanvasElement;
   maskCanvas: HTMLCanvasElement;
   alphaMask: Uint8Array;
-  providerUsed: 'local' | 'removebg' | 'gemini';
 }> {
-  // If cloud provider is requested, attempt server-side proxy
+  const isBrowser = typeof window !== 'undefined' && typeof document !== 'undefined';
+
+  if (isBrowser) {
+    // 1. Run genuine deep-learning AI segmentation (MediaPipe person segmentation + IS-Net salient matting)
+    // Throws an explicit error if the AI model fails. NEVER silently falls back to color tolerance!
+    const aiResult = await executeRealAiSegmentation(file, imgElement, {
+      modelVariant: options.modelVariant,
+      targetSubject: options.targetSubject || 'auto',
+    });
+
+    const w = imgElement.naturalWidth || imgElement.width || 1;
+    const h = imgElement.naturalHeight || imgElement.height || 1;
+    const totalPixels = w * h;
+    let alphaMask = aiResult.alphaMask;
+
+    // 2. Refine segmentation mask if options requested
+    if (options.removeIslands !== false) {
+      alphaMask.set(applySmallIslandRemoval(alphaMask, w, h, 60));
+    }
+    if (options.holeCorrection !== false) {
+      alphaMask.set(applyHoleCorrection(alphaMask, w, h, 100));
+    }
+    if (options.edgeSmoothing && options.edgeSmoothing > 0) {
+      alphaMask.set(applyMaskEdgeSmoothing(alphaMask, w, h, options.edgeSmoothing));
+    }
+
+    // 3. Reconstruct cutout canvas with 100% of the original photo's pristine RGB colors
+    reconstructCutoutFromAlphaMask(aiResult.cutoutCanvas, imgElement, alphaMask);
+
+    // 4. Update black & white mask diagnostic canvas
+    const maskCanvas = aiResult.maskCanvas;
+    const maskCtx = maskCanvas.getContext('2d');
+    if (maskCtx) {
+      const mData = maskCtx.createImageData(w, h);
+      for (let i = 0; i < totalPixels; i++) {
+        const a = alphaMask[i];
+        mData.data[i * 4] = a;
+        mData.data[i * 4 + 1] = a;
+        mData.data[i * 4 + 2] = a;
+        mData.data[i * 4 + 3] = 255;
+      }
+      maskCtx.putImageData(mData, 0, 0);
+    }
+
+    const finalBlob = await new Promise<Blob>((resolve, reject) => {
+      aiResult.cutoutCanvas.toBlob(
+        (b) => (b ? resolve(b) : reject(new Error('Cutout toBlob failed'))),
+        'image/png'
+      );
+    });
+
+    return {
+      blob: finalBlob,
+      cutoutCanvas: aiResult.cutoutCanvas,
+      maskCanvas,
+      alphaMask,
+    };
+  }
+
+  // Graceful fallback ONLY for unit tests running in headless Node.js / JSDOM test runner
+  return executeLocalBgRemoval(imgElement, {
+    tolerance: options.tolerance ?? 38,
+    featherRadius: options.featherRadius ?? 2,
+    smartAlpha: options.smartAlpha ?? true,
+  });
+}
+
+/**
+ * Universal Background Removal Dispatcher.
+ * Defaults to AI Segmentation (Pretrained IS-Net) and supports legacy tolerance mode.
+ */
+export async function removeBackground(
+  file: File,
+  imgElement: HTMLImageElement,
+  options: BgRemovalOptions = { provider: 'ai_segmentation' }
+): Promise<{
+  blob: Blob;
+  cutoutCanvas: HTMLCanvasElement;
+  maskCanvas: HTMLCanvasElement;
+  alphaMask: Uint8Array;
+  providerUsed: 'ai_segmentation' | 'legacy_color' | 'local' | 'removebg' | 'gemini';
+  /** Set when the cloud provider was requested but the local processor was used instead, and why. */
+  fallbackNotice?: string;
+}> {
+  let fallbackNotice: string | undefined;
+  // 1. Cloud remove.bg or cloud Gemini requested
   if (options.provider === 'cloud_removebg' || options.provider === 'cloud_gemini') {
     try {
-      const formData = new FormData();
-      formData.append('image', file);
-      formData.append('provider', options.provider === 'cloud_removebg' ? 'removebg' : 'gemini');
+      // The server reads JSON ({ imageBase64 }); it never parsed the old multipart body.
+      const imageBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error('Failed to read image'));
+        reader.readAsDataURL(file);
+      });
 
       const res = await fetch('/api/image/remove-bg', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageBase64,
+          provider: options.provider === 'cloud_removebg' ? 'removebg' : 'gemini',
+        }),
         signal: AbortSignal.timeout(15000),
       });
 
@@ -410,22 +725,41 @@ export async function removeBackground(
             providerUsed: options.provider === 'cloud_removebg' ? 'removebg' : 'gemini',
           };
         }
+      } else {
+        const err = await res.json().catch(() => ({}));
+        fallbackNotice =
+          res.status === 401
+            ? 'ক্লাউড ব্যাকগ্রাউন্ড রিমুভের জন্য সাইন ইন করুন; লোকাল প্রসেসর ব্যবহার করা হয়েছে। (Sign in for cloud removal; used local processing.)'
+            : res.status === 403 || res.status === 429
+            ? `${err?.message || 'Cloud limit reached.'} লোকাল প্রসেসর ব্যবহার করা হয়েছে। (Used local processing.)`
+            : 'ক্লাউড সেবা এখন পাওয়া যাচ্ছে না; লোকাল প্রসেসর ব্যবহার করা হয়েছে। (Cloud unavailable; used local processing.)';
       }
     } catch {
-      // Fallback to local
+      fallbackNotice =
+        'ক্লাউড সার্ভারে পৌঁছানো যায়নি; লোকাল প্রসেসর ব্যবহার করা হয়েছে। (Could not reach the cloud service; used local processing.)';
     }
   }
 
-  // Fallback to local
-  const result = await executeLocalBgRemoval(imgElement, {
-    tolerance: options.tolerance,
-    featherRadius: options.featherRadius,
-    smartAlpha: options.smartAlpha,
-  });
+  // 2. Legacy color tolerance mode explicitly chosen
+  if (options.provider === 'legacy_color' || options.provider === 'local') {
+    const result = await executeLocalBgRemoval(imgElement, {
+      tolerance: options.tolerance ?? 38,
+      featherRadius: options.featherRadius ?? 2,
+      smartAlpha: options.smartAlpha ?? true,
+    });
+    return {
+      ...result,
+      providerUsed: 'legacy_color',
+      fallbackNotice,
+    };
+  }
 
+  // 3. Default: True Pretrained AI Segmentation
+  const aiResult = await executeAiBgRemoval(file, imgElement, options);
   return {
-    ...result,
-    providerUsed: 'local',
+    ...aiResult,
+    providerUsed: 'ai_segmentation',
+    fallbackNotice,
   };
 }
 
@@ -560,6 +894,102 @@ export function applyManualBrushStroke(
 }
 
 /**
+ * Edge and hair refinement brush.
+ * Softens transition zones, de-fringes color halos, and recovers natural hair/boundary contours.
+ */
+export function applyEdgeRefinement(
+  cutoutCanvas: HTMLCanvasElement,
+  originalImage: HTMLImageElement,
+  alphaMask: Uint8Array,
+  options: {
+    points: Array<{ x: number; y: number }>;
+    radius: number;
+    strength?: number; // 0 to 1
+  }
+): ImageData {
+  const w = cutoutCanvas.width;
+  const h = cutoutCanvas.height;
+  const ctx = cutoutCanvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) throw new Error('2D Canvas Context unavailable');
+
+  const currentData = ctx.getImageData(0, 0, w, h);
+  const data = currentData.data;
+
+  const radius = Math.max(2, options.radius);
+  const radiusSq = radius * radius;
+  const strength = Math.max(0.1, Math.min(1, options.strength ?? 0.7));
+
+  for (const pt of options.points) {
+    const startX = Math.max(0, Math.floor(pt.x - radius));
+    const endX = Math.min(w - 1, Math.ceil(pt.x + radius));
+    const startY = Math.max(0, Math.floor(pt.y - radius));
+    const endY = Math.min(h - 1, Math.ceil(pt.y + radius));
+
+    for (let y = startY; y <= endY; y++) {
+      for (let x = startX; x <= endX; x++) {
+        const dx = x - pt.x;
+        const dy = y - pt.y;
+        const distSq = dx * dx + dy * dy;
+
+        if (distSq <= radiusSq) {
+          const idx = y * w + x;
+          const p = idx * 4;
+          const curA = data[p + 3];
+
+          // Target boundary transition zone (alpha between 10 and 245)
+          if (curA > 5 && curA < 250) {
+            // Bilateral sample around pixel to compute smooth alpha and de-fringed color
+            let alphaSum = 0;
+            let sampleCount = 0;
+            let fgR = 0;
+            let fgG = 0;
+            let fgB = 0;
+            let fgWeight = 0;
+
+            for (let ny = Math.max(0, y - 2); ny <= Math.min(h - 1, y + 2); ny++) {
+              for (let nx = Math.max(0, x - 2); nx <= Math.min(w - 1, x + 2); nx++) {
+                const nIdx = ny * w + nx;
+                const nP = nIdx * 4;
+                const nA = alphaMask[nIdx];
+                alphaSum += nA;
+                sampleCount++;
+
+                if (nA > 200) {
+                  fgR += data[nP];
+                  fgG += data[nP + 1];
+                  fgB += data[nP + 2];
+                  fgWeight++;
+                }
+              }
+            }
+
+            if (sampleCount > 0) {
+              const smoothedA = Math.round(alphaSum / sampleCount);
+              const blendedA = Math.round(curA * (1 - strength) + smoothedA * strength);
+              data[p + 3] = blendedA;
+              alphaMask[idx] = blendedA;
+
+              // De-fringe: If pixel has halo and we found nearby solid foreground, shift RGB
+              if (fgWeight > 0) {
+                const avgFgR = fgR / fgWeight;
+                const avgFgG = fgG / fgWeight;
+                const avgFgB = fgB / fgWeight;
+                data[p] = Math.round(data[p] * (1 - strength * 0.5) + avgFgR * (strength * 0.5));
+                data[p + 1] = Math.round(data[p + 1] * (1 - strength * 0.5) + avgFgG * (strength * 0.5));
+                data[p + 2] = Math.round(data[p + 2] * (1 - strength * 0.5) + avgFgB * (strength * 0.5));
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  ctx.putImageData(currentData, 0, 0);
+  return currentData;
+}
+
+/**
  * Composites the final output image with backgrounds, shadows, product framing, and adjustments.
  */
 export async function compositeFinalImage(
@@ -661,8 +1091,14 @@ export async function compositeFinalImage(
   ctx.save();
   switch (settings.backgroundType) {
     case 'transparent':
-      // Clear canvas (default transparent)
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (settings.exportFormat === 'image/jpeg') {
+        // JPEG does not support transparency - render clean white matte
+        ctx.fillStyle = settings.solidColor || '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      } else {
+        // Clear canvas (default transparent PNG/WebP)
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
       break;
 
     case 'color':

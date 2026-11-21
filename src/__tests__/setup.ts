@@ -100,6 +100,27 @@ if (typeof window !== 'undefined') {
   (window as any).Image = MockImage;
 }
 
+// Global Path2D constructor mock for JSDOM font & vector path drawing
+if (typeof globalThis.Path2D === 'undefined') {
+  class MockPath2D {
+    addPath = vi.fn();
+    closePath = vi.fn();
+    moveTo = vi.fn();
+    lineTo = vi.fn();
+    bezierCurveTo = vi.fn();
+    quadraticCurveTo = vi.fn();
+    arc = vi.fn();
+    arcTo = vi.fn();
+    ellipse = vi.fn();
+    rect = vi.fn();
+    roundRect = vi.fn();
+  }
+  (globalThis as any).Path2D = MockPath2D;
+  if (typeof window !== 'undefined') {
+    (window as any).Path2D = MockPath2D;
+  }
+}
+
 // 1. Mock HTMLCanvasElement 2D context & helpers unconditionally
 if (typeof HTMLCanvasElement !== 'undefined') {
   function hexToRgba(color: string): [number, number, number, number] {
@@ -236,6 +257,27 @@ if (typeof HTMLCanvasElement !== 'undefined') {
         })),
         setTransform: vi.fn(),
         resetTransform: vi.fn(),
+        transform: vi.fn(),
+        getTransform: vi.fn(() => {
+          if (typeof DOMMatrix !== 'undefined') {
+            try { return new DOMMatrix(); } catch (_) {}
+          }
+          return {
+            a: 1, b: 0, c: 0, d: 1, e: 0, f: 0,
+            m11: 1, m12: 0, m21: 0, m22: 1, m41: 0, m42: 0,
+            is2D: true, isIdentity: true,
+            inverse: () => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }),
+            multiply: () => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }),
+            translate: () => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }),
+            scale: () => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }),
+          };
+        }),
+        createPattern: vi.fn(),
+        createLinearGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
+        createRadialGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
+        isPointInPath: vi.fn(() => false),
+        isPointInStroke: vi.fn(() => false),
+        roundRect: vi.fn(),
         save: vi.fn(),
         restore: vi.fn(),
         beginPath: vi.fn(),
@@ -402,3 +444,50 @@ if (typeof process !== 'undefined' && process.stderr && process.stderr.write) {
     return (originalStderrWrite as any)(chunk, ...rest);
   };
 }
+
+/**
+ * Network-free AI segmentation stub.
+ *
+ * The real executeRealAiSegmentation() downloads the MediaPipe / IS-Net models from a CDN on first use.
+ * JSDOM defines `window` and `document`, so the production code treats it as a real browser and attempts
+ * that download, which made the background-removal tests depend on the network and hit the 30s test timeout.
+ *
+ * Only the model-inference step is replaced. The dispatcher, mask refinement (islands, holes, edge smoothing),
+ * cutout reconstruction and PNG encoding are the real production code paths.
+ * Real-model quality must still be verified manually in a browser (see release checklist, item 4).
+ */
+vi.mock('../services/aiSegmentationService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../services/aiSegmentationService')>();
+  return {
+    ...actual,
+    executeRealAiSegmentation: async (_file: File | Blob, imgElement: HTMLImageElement) => {
+      const w = Math.max(1, imgElement.naturalWidth || imgElement.width || 1);
+      const h = Math.max(1, imgElement.naturalHeight || imgElement.height || 1);
+
+      // Deterministic mask: opaque centre block, transparent border.
+      const alphaMask = new Uint8Array(w * h);
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const inside = x >= w * 0.25 && x < w * 0.75 && y >= h * 0.25 && y < h * 0.75;
+          alphaMask[y * w + x] = inside || (w <= 2 && h <= 2) ? 255 : 0;
+        }
+      }
+
+      const makeCanvas = () => {
+        const c = document.createElement('canvas');
+        c.width = w;
+        c.height = h;
+        return c;
+      };
+
+      return {
+        alphaMask,
+        maskCanvas: makeCanvas(),
+        cutoutCanvas: makeCanvas(),
+        blob: new Blob(['stub'], { type: 'image/png' }),
+        modelUsed: 'imgly_isnet' as const,
+        confidence: 1,
+      };
+    },
+  };
+});

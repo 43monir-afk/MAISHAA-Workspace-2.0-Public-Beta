@@ -34,7 +34,13 @@ export type ToolCategory =
   | 'ai_future'
   | 'tutorials'
   | 'privacy'
-  | 'about';
+  | 'about'
+  | 'pricing'
+  | 'contact'
+  | 'download'
+  | 'signin'
+  | 'account'
+  | 'admin';
 
 export type JobStatus = 
   | 'WAITING'

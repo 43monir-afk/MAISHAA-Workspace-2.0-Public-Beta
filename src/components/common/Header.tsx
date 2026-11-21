@@ -1,9 +1,9 @@
 import React from 'react';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { Logo } from './Logo';
+import { UserMenu } from '../site/UserMenu';
 import {
   Sparkles,
-  Crown,
   Globe,
   Bell,
   Grid,
@@ -99,15 +99,6 @@ export const Header: React.FC = () => {
           <span className="sm:hidden">AI ✦</span>
         </button>
 
-        {/* Pro Plan Badge */}
-        <button
-          onClick={() => setActiveModule('office_pack')}
-          className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100/80 text-amber-800 border border-amber-200 text-xs font-bold transition-colors shadow-2xs"
-        >
-          <Crown className="w-3.5 h-3.5 text-amber-600" />
-          <span>Pro Plan</span>
-        </button>
-
         {/* BG Remover Quick Action */}
         <button
           onClick={() => setActiveModule('bg_remover')}
@@ -168,10 +159,22 @@ export const Header: React.FC = () => {
           <BookOpen className="w-4 h-4 text-blue-600" />
         </button>
 
-        {/* User Profile Avatar */}
-        <div className="w-8 h-8 rounded-full bg-[#0a192f] text-white flex items-center justify-center font-bold text-xs shadow-xs ml-1 cursor-pointer">
-          <User className="w-4 h-4" />
-        </div>
+        {/* Download + Pricing links */}
+        <button
+          onClick={() => setActiveModule('pricing')}
+          className="hidden lg:inline-flex px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+        >
+          {language === 'bn' ? 'প্ল্যান' : 'Pricing'}
+        </button>
+        <button
+          onClick={() => setActiveModule('download')}
+          className="hidden lg:inline-flex px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+        >
+          {language === 'bn' ? 'পিসি অ্যাপ' : 'Get the app'}
+        </button>
+
+        {/* Account: Sign in / avatar menu */}
+        <UserMenu />
       </div>
     </header>
   );

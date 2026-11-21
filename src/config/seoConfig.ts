@@ -253,6 +253,49 @@ export const PUBLIC_ROUTES_SEO: Record<string, PublicRouteSeo> = {
     relatedRoutes: ['/pdf-studio/compress', '/scan-ocr', '/forms-hub'],
   },
 
+  '/pdf-studio/pdf-to-jpg': {
+    path: '/pdf-studio/pdf-to-jpg',
+    module: 'pdf',
+    subTab: 'pdfToImages',
+    titleBn: 'পিডিএফ থেকে জেপিজি ছবি কনভার্টার — PDF to JPG Converter | মায়িশা',
+    titleEn: 'PDF to JPG Converter Online Free — High Quality Images | MAISHAA',
+    metaDescriptionBn: 'পিডিএফের সব পেজ উচ্চমানের জেপিজি ছবিতে রূপান্তর করুন সম্পূর্ণ বিনামূল্যে ও নিরাপদে ব্রাউজারে। সিঙ্গেল ক্লিক ডাউনলোড ও জিপ ফাইল সাপোর্ট।',
+    metaDescriptionEn: 'Convert PDF pages into high-resolution JPG images online for free. 100% private client-side rendering with instant preview and ZIP download.',
+    h1Bn: 'পিডিএফ থেকে জেপিজি (JPG) ছবি কনভার্টার',
+    h1En: 'PDF to JPG Image Converter Online',
+    summaryBn: 'মায়িশা ওয়ার্কস্পেসের শক্তিশালী ক্লায়েন্ট-সাইড রেন্ডারিং ইঞ্জিনের মাধ্যমে আপনার পিডিএফ ডকুমেন্টের প্রতিটি পৃষ্ঠা ক্রিস্প ও হাই-রেজোলিউশন জেপিজি অথবা পিএনজি ছবিতে রূপান্তর করুন।',
+    summaryEn: 'Convert each page of your PDF document into crisp, high-resolution JPG or PNG images directly in your browser with zero server uploads.',
+    instructionsBn: [
+      'যে পিডিএফ ফাইলটি ছবিতে রূপান্তর করতে চান তা সিলেক্ট করুন বা ড্র্যাগ করে আনুন।',
+      'আউটপুট ফরম্যাট (JPG বা PNG) এবং রেজোলিউশন স্কেল (Standard, Crisp HD, Ultra) নির্বাচন করুন।',
+      'প্রয়োজনে নির্দিষ্ট পৃষ্ঠা রেঞ্জ উল্লেখ করুন বা সব পেজ রাখুন।',
+      'রূপান্তর সম্পন্ন হলে প্রতিটি পেজ আলাদা অথবা একসাথে ZIP ফাইলে ডাউনলোড করুন।',
+    ],
+    instructionsEn: [
+      'Select or drag-and-drop the PDF document you want to convert.',
+      'Choose output format (JPG or PNG) and resolution scale (Standard, Crisp HD, Ultra).',
+      'Optionally specify a custom page range or convert all pages.',
+      'Download individual page images or grab all pages in a single ZIP archive.',
+    ],
+    supportedFormats: ['PDF (.pdf) → JPG (.jpg), PNG (.png), ZIP (.zip)'],
+    limits: '৫০ এমবি পর্যন্ত ফাইল সাইজ।',
+    faqs: [
+      {
+        questionBn: 'পিডিএফ থেকে জেপিজিতে রূপান্তর করলে কি লেখার মান কমে যায়?',
+        answerBn: 'না, আমাদের হাই-রেজোলিউশন স্কেলার (144–216 DPI) ব্যবহার করায় লেখার সূক্ষ্মতা ও স্পষ্টতা চমৎকার থাকে।',
+        questionEn: 'Does converting PDF to JPG reduce text sharpness?',
+        answerEn: 'No, our high-fidelity renderer (144–216 DPI) ensures sharp text and pristine graphics.',
+      },
+      {
+        questionBn: 'মাল্টি-পেজ পিডিএফের সব ছবি কি একসাথে ডাউনলোড করা যায়?',
+        answerBn: 'হ্যাঁ, একাধিক পেজ থাকলে এক ক্লিকেই সবগুলো ছবি স্বয়ংক্রিয়ভাবে একটি ZIP ফাইলের ভেতরে ডাউনলোড হবে।',
+        questionEn: 'Can I download all pages of a multi-page PDF at once?',
+        answerEn: 'Yes, multi-page PDFs automatically provide a single-click ZIP archive containing all pages.',
+      },
+    ],
+    relatedRoutes: ['/pdf-studio/convert', '/pdf-studio/merge', '/pdf-studio/compress'],
+  },
+
   '/image-studio/background-remover': {
     path: '/image-studio/background-remover',
     module: 'bg_remover',
@@ -594,6 +637,86 @@ export const PUBLIC_ROUTES_SEO: Record<string, PublicRouteSeo> = {
   },
 };
 
+// ── Website pages: Free/Pro plans, desktop download, contact ──
+// (Sign in, Account and Admin pages are private: they are served with noindex and are not listed here.)
+PUBLIC_ROUTES_SEO['/pricing'] = {
+  path: '/pricing',
+  module: 'pricing',
+  titleBn: 'ফ্রি ও প্রো প্ল্যান — মূল্য তালিকা | মায়িশা ওয়ার্কস্পেস',
+  titleEn: 'Free & Pro Plans — Pricing | MAISHAA WORKSPACE',
+  metaDescriptionBn: 'মায়িশা ওয়ার্কস্পেসের ফ্রি ও প্রো প্ল্যানের তুলনা: এআই সীমা, ব্যাচ প্রসেসিং, পিডিএফ প্রোটেক্ট ও ডেস্কটপ অ্যাপ।',
+  metaDescriptionEn: 'Compare MAISHAA WORKSPACE Free and Pro plans: AI limits, batch processing, PDF protection and the Windows desktop app.',
+  h1Bn: 'ফ্রি ও প্রো প্ল্যানের তুলনা',
+  h1En: 'Free and Pro Plans Compared',
+  summaryBn: 'অধিকাংশ টুল ফ্রি। এআই কমান্ড সেন্টার, ব্যাচ প্রসেসিং ও উন্নত পিডিএফ টুল এবং বেশি এআই সীমার জন্য প্রো কী ব্যবহার করুন।',
+  summaryEn: 'Most tools are free. Use a Pro key for the AI Command Center, batch processing, advanced PDF tools and higher AI limits.',
+  instructionsBn: ['ফ্রি অ্যাকাউন্ট খুলুন।', 'Contact পেজ থেকে প্রো কী কেনার জন্য যোগাযোগ করুন।', 'Account পেজে কী বসিয়ে প্রো চালু করুন।'],
+  instructionsEn: ['Create a free account.', 'Contact us to buy a Pro key.', 'Enter the key on the Account page to activate Pro.'],
+  supportedFormats: ['Web', 'Windows'],
+  limits: 'Free: 5 AI questions and 3 translations per day.',
+  faqs: [
+    {
+      questionBn: 'প্রো কী কীভাবে পাব?',
+      answerBn: 'Contact পেজে মেসেজ দিন। পেমেন্ট নিশ্চিত হলে আমরা আপনাকে কী পাঠাব।',
+      questionEn: 'How do I get a Pro key?',
+      answerEn: 'Send a message from the Contact page. After payment is confirmed we send you a key.',
+    },
+  ],
+  relatedRoutes: ['/download', '/contact', '/'],
+};
+
+PUBLIC_ROUTES_SEO['/download'] = {
+  path: '/download',
+  module: 'download',
+  titleBn: 'পিসি অ্যাপ ডাউনলোড (উইন্ডোজ) | মায়িশা ওয়ার্কস্পেস',
+  titleEn: 'Download the Windows App | MAISHAA WORKSPACE',
+  metaDescriptionBn: 'মায়িশা ওয়ার্কস্পেসের উইন্ডোজ ডেস্কটপ অ্যাপ ডাউনলোড করুন। প্রো কী দিয়ে সব ফিচার চালু করুন।',
+  metaDescriptionEn: 'Download the MAISHAA WORKSPACE desktop app for Windows. Activate Pro with your licence key.',
+  h1Bn: 'মায়িশা ওয়ার্কস্পেস পিসি অ্যাপ',
+  h1En: 'MAISHAA WORKSPACE Desktop App',
+  summaryBn: 'অ্যাপটি ডাউনলোড করে ইনস্টল করুন। ফ্রি মোডে চালাতে পারেন, অথবা প্রো কী দিয়ে সব ফিচার আনলক করুন।',
+  summaryEn: 'Install the app and use it in Free mode, or enter a Pro key to unlock every feature.',
+  instructionsBn: ['ইনস্টলার ডাউনলোড করুন।', 'অ্যাপ খুলে Activate Pro বাটনে কী দিন।', 'প্রো ফিচার সঙ্গে সঙ্গে চালু হবে।'],
+  instructionsEn: ['Download the installer.', 'Open the app and choose Activate Pro.', 'Pro features unlock immediately.'],
+  supportedFormats: ['Windows 10/11 (64-bit)'],
+  limits: 'One licence key can be used on a limited number of PCs.',
+  faqs: [
+    {
+      questionBn: 'অ্যাপ কি ইন্টারনেট ছাড়া চলে?',
+      answerBn: 'না, বর্তমান সংস্করণ অনলাইন ওয়ার্কস্পেস লোড করে; ফাইল প্রসেসিং আপনার পিসিতেই হয়।',
+      questionEn: 'Does the app work offline?',
+      answerEn: 'Not yet. This version loads the online workspace; file processing still happens on your PC.',
+    },
+  ],
+  relatedRoutes: ['/pricing', '/contact', '/'],
+};
+
+PUBLIC_ROUTES_SEO['/contact'] = {
+  path: '/contact',
+  module: 'contact',
+  titleBn: 'যোগাযোগ করুন — সাপোর্ট ও প্রো কী | মায়িশা ওয়ার্কস্পেস',
+  titleEn: 'Contact & Support | MAISHAA WORKSPACE',
+  metaDescriptionBn: 'প্রশ্ন, সমস্যা বা প্রো কী কেনার জন্য মায়িশা ওয়ার্কস্পেস টিমকে মেসেজ পাঠান।',
+  metaDescriptionEn: 'Send a message to the MAISHAA WORKSPACE team for questions, bug reports or to buy a Pro key.',
+  h1Bn: 'আমাদের সঙ্গে যোগাযোগ করুন',
+  h1En: 'Contact the MAISHAA Team',
+  summaryBn: 'ফর্মটি পূরণ করে মেসেজ পাঠান। আমরা আপনার ইমেইলে উত্তর দেব।',
+  summaryEn: 'Fill in the form and we will reply by email.',
+  instructionsBn: ['নাম ও ইমেইল দিন।', 'বিষয় ও বার্তা লিখুন।', 'পাঠান বাটনে ক্লিক করুন।'],
+  instructionsEn: ['Enter your name and email.', 'Write your subject and message.', 'Press Send.'],
+  supportedFormats: ['Web'],
+  limits: 'Up to 5 messages per hour.',
+  faqs: [
+    {
+      questionBn: 'কত সময়ে উত্তর পাব?',
+      answerBn: 'সাধারণত ১-২ কর্মদিবসের মধ্যে।',
+      questionEn: 'How fast will you reply?',
+      answerEn: 'Usually within 1–2 working days.',
+    },
+  ],
+  relatedRoutes: ['/pricing', '/download', '/'],
+};
+
 /**
  * Generates Schema.org JSON-LD structured data for a given route.
  */
@@ -607,7 +730,7 @@ export function generateSchemaJsonLd(routePath: string): object {
       '@type': 'Organization',
       name: 'MAISHAA WORKSPACE',
       url: CANONICAL_DOMAIN,
-      logo: `${CANONICAL_DOMAIN}/logo.svg`,
+      logo: `${CANONICAL_DOMAIN}/logo-512.png`,
       description: 'One Workspace. Every Office Task. এক জায়গায় আপনার সব অফিস কাজ।',
       sameAs: [
         'https://facebook.com/maishaa.workspace',

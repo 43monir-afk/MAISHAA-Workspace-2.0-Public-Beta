@@ -1,4 +1,4 @@
-import { PDFDocument, degrees, PDFName } from 'pdf-lib';
+import { PDFDocument, degrees, PDFName, StandardFonts, rgb } from 'pdf-lib';
 import pako from 'pako';
 import { validateFileInput } from '../utils/privacy';
 import { normalizeBengaliVisualToUnicode } from './directExportService';
@@ -837,4 +837,279 @@ export async function extractPdfText(file: File): Promise<PdfTextExtractionResul
     metadata,
     warning,
   };
+}
+
+export {
+  convertPdfToImages,
+  parsePageRange,
+  type PdfToImageOptions,
+  type PdfPageImage,
+  type PdfToImageResult,
+} from './pdfToImageService';
+
+
+/** Standard PDF fonts can only draw Latin (WinAnsi) characters. */
+export function assertLatinText(text: string): void {
+  // eslint-disable-next-line no-control-regex
+  if (!/^[\u0020-\u007E\u00A0-\u00FF]*$/.test(text)) {
+    throw new Error(
+      'Only English letters, digits and common symbols are supported for this text. Bengali text cannot be drawn with the built-in PDF fonts.'
+    );
+  }
+}
+
+export interface WatermarkOptions {
+  text: string;
+  /** 0.05 - 1, default 0.25 */
+  opacity?: number;
+  /** Font size in points, default 56 */
+  fontSize?: number;
+  /** Rotation in degrees, default 45 */
+  angle?: number;
+  /** Hex colour such as #888888 */
+  color?: string;
+  /** 1-based pages; all pages when empty */
+  pageNumbers?: number[];
+}
+
+export function hexToRgb(hex: string | undefined): { r: number; g: number; b: number } {
+  const m = /^#?([0-9a-f]{6})$/i.exec((hex || '').trim());
+  if (!m) return { r: 0.5, g: 0.5, b: 0.5 };
+  const n = parseInt(m[1], 16);
+  return { r: ((n >> 16) & 255) / 255, g: ((n >> 8) & 255) / 255, b: (n & 255) / 255 };
+}
+
+/**
+ * Stamp a centred text watermark on every (or selected) page.
+ */
+export async function addWatermark(file: File, options: WatermarkOptions): Promise<PdfResult> {
+  const val = validateFileInput(file);
+  if (!val.isValid) throw new Error(val.error);
+
+  const text = (options.text || '').trim();
+  if (!text) throw new Error('Watermark text is empty. Please type the text to stamp.');
+  assertLatinText(text);
+
+  const opacity = Math.min(1, Math.max(0.05, options.opacity ?? 0.25));
+  const fontSize = Math.min(200, Math.max(8, options.fontSize ?? 56));
+  const angle = options.angle ?? 45;
+  const { r, g, b } = hexToRgb(options.color);
+
+  const doc = await PDFDocument.load(await file.arrayBuffer(), { ignoreEncryption: true });
+  const font = await doc.embedFont(StandardFonts.HelveticaBold);
+  const total = doc.getPageCount();
+  const targets =
+    options.pageNumbers && options.pageNumbers.length > 0
+      ? options.pageNumbers.map((n) => n - 1).filter((i) => i >= 0 && i < total)
+      : doc.getPageIndices();
+  if (targets.length === 0) throw new Error('No valid pages selected for the watermark.');
+
+  const textWidth = font.widthOfTextAtSize(text, fontSize);
+  const textHeight = font.heightAtSize(fontSize);
+  const rad = (angle * Math.PI) / 180;
+
+  for (const idx of targets) {
+    const page = doc.getPage(idx);
+    const { width, height } = page.getSize();
+    // Position the text so that its centre lands on the page centre after rotation.
+    const x = width / 2 - (textWidth / 2) * Math.cos(rad) + (textHeight / 4) * Math.sin(rad);
+    const y = height / 2 - (textWidth / 2) * Math.sin(rad) - (textHeight / 4) * Math.cos(rad);
+    page.drawText(text, {
+      x,
+      y,
+      size: fontSize,
+      font,
+      color: rgb(r, g, b),
+      opacity,
+      rotate: degrees(angle),
+    });
+  }
+
+  const bytes = await doc.save();
+  const blob = new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'application/pdf' });
+  return { blob, originalSize: file.size, newSize: blob.size, pageCount: doc.getPageCount() };
+}
+
+export type PageNumberPosition =
+  | 'bottom-center'
+  | 'bottom-right'
+  | 'bottom-left'
+  | 'top-center'
+  | 'top-right'
+  | 'top-left';
+
+export interface PageNumberOptions {
+  position?: PageNumberPosition;
+  /** Number printed on the first page, default 1 */
+  startAt?: number;
+  /** Print "1 / 10" instead of "1" */
+  showTotal?: boolean;
+  fontSize?: number;
+}
+
+/**
+ * Print a page number on every page.
+ */
+export async function addPageNumbers(file: File, options: PageNumberOptions = {}): Promise<PdfResult> {
+  const val = validateFileInput(file);
+  if (!val.isValid) throw new Error(val.error);
+
+  const position = options.position ?? 'bottom-center';
+  const startAt = Number.isFinite(options.startAt) ? Math.floor(options.startAt as number) : 1;
+  const fontSize = Math.min(36, Math.max(6, options.fontSize ?? 11));
+
+  const doc = await PDFDocument.load(await file.arrayBuffer(), { ignoreEncryption: true });
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const total = doc.getPageCount();
+  const margin = 28;
+
+  doc.getPages().forEach((page, i) => {
+    const label = options.showTotal ? `${startAt + i} / ${startAt + total - 1}` : `${startAt + i}`;
+    const w = font.widthOfTextAtSize(label, fontSize);
+    const { width, height } = page.getSize();
+    const x = position.endsWith('left') ? margin : position.endsWith('right') ? width - margin - w : (width - w) / 2;
+    const y = position.startsWith('top') ? height - margin : margin - fontSize / 2;
+    page.drawText(label, { x, y, size: fontSize, font, color: rgb(0.2, 0.2, 0.2) });
+  });
+
+  const bytes = await doc.save();
+  const blob = new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'application/pdf' });
+  return { blob, originalSize: file.size, newSize: blob.size, pageCount: total };
+}
+
+/**
+ * Parse an ordering such as "3, 1, 2" or "5-1" (descending range) into 0-based indices, keeping the typed order.
+ */
+export function parsePageOrder(orderStr: string, totalPages: number): number[] {
+  const order: number[] = [];
+  for (const part of orderStr.split(/[,;\s]+/).filter(Boolean)) {
+    const range = /^(\d+)-(\d+)$/.exec(part);
+    if (range) {
+      const a = parseInt(range[1], 10);
+      const b = parseInt(range[2], 10);
+      const step = a <= b ? 1 : -1;
+      for (let n = a; step === 1 ? n <= b : n >= b; n += step) order.push(n - 1);
+    } else if (/^\d+$/.test(part)) {
+      order.push(parseInt(part, 10) - 1);
+    } else {
+      throw new Error(`"${part}" is not a valid page number or range.`);
+    }
+  }
+  if (order.some((i) => i < 0 || i >= totalPages)) {
+    throw new Error(`Page numbers must be between 1 and ${totalPages}.`);
+  }
+  return order;
+}
+
+/**
+ * Re-arrange pages. The order must list every page exactly once (e.g. "3,1,2" for a 3-page file).
+ */
+export async function reorderPages(file: File, orderStr: string): Promise<PdfResult> {
+  const val = validateFileInput(file);
+  if (!val.isValid) throw new Error(val.error);
+
+  const src = await PDFDocument.load(await file.arrayBuffer(), { ignoreEncryption: true });
+  const total = src.getPageCount();
+  const order = parsePageOrder(orderStr, total);
+
+  if (order.length !== total || new Set(order).size !== total) {
+    throw new Error(
+      `The new order must contain every page exactly once. This file has ${total} pages; you listed ${order.length}.`
+    );
+  }
+
+  const out = await PDFDocument.create();
+  const copied = await out.copyPages(src, order);
+  copied.forEach((pg) => out.addPage(pg));
+
+  const bytes = await out.save();
+  const blob = new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'application/pdf' });
+  return { blob, originalSize: file.size, newSize: blob.size, pageCount: total };
+}
+
+export type SignaturePosition =
+  | 'bottom-right'
+  | 'bottom-left'
+  | 'bottom-center'
+  | 'center'
+  | 'top-right'
+  | 'top-left';
+
+export type SignatureSource =
+  | { kind: 'image'; bytes: Uint8Array; mime: 'image/png' | 'image/jpeg' }
+  | { kind: 'text'; text: string };
+
+export interface SignOptions {
+  signature: SignatureSource;
+  /** 'first' | 'last' | 'all' | a 1-based page number. Default 'last'. */
+  pages?: 'first' | 'last' | 'all' | number;
+  position?: SignaturePosition;
+  /** Signature width as % of page width (5-70). Default 25. */
+  widthPercent?: number;
+}
+
+/**
+ * Place a VISUAL signature (drawn/uploaded image or typed name) on the PDF.
+ * This is an image stamp, not a cryptographic digital signature.
+ */
+export async function addSignature(file: File, options: SignOptions): Promise<PdfResult> {
+  const val = validateFileInput(file);
+  if (!val.isValid) throw new Error(val.error);
+
+  const doc = await PDFDocument.load(await file.arrayBuffer(), { ignoreEncryption: true });
+  const total = doc.getPageCount();
+  const mode = options.pages ?? 'last';
+  const targets =
+    mode === 'all'
+      ? doc.getPageIndices()
+      : mode === 'first'
+        ? [0]
+        : mode === 'last'
+          ? [total - 1]
+          : [Math.floor(mode) - 1];
+  if (targets.some((i) => i < 0 || i >= total)) {
+    throw new Error(`Page must be between 1 and ${total}.`);
+  }
+
+  const widthPct = Math.min(70, Math.max(5, options.widthPercent ?? 25));
+  const position = options.position ?? 'bottom-right';
+  const margin = 36;
+
+  // Prepare the drawable once and reuse it on every target page.
+  let draw: (page: ReturnType<typeof doc.getPage>, x: number, y: number, w: number) => void;
+  let aspect: number; // height / width
+
+  const sig = options.signature;
+  if (sig.kind === 'image') {
+    if (!sig.bytes || sig.bytes.length === 0) throw new Error('Signature image is empty. Please draw or upload a signature.');
+    const img = sig.mime === 'image/jpeg' ? await doc.embedJpg(sig.bytes) : await doc.embedPng(sig.bytes);
+    aspect = img.height / img.width;
+    draw = (page, x, y, w) => page.drawImage(img, { x, y, width: w, height: w * aspect });
+  } else {
+    const text = (sig.text || '').trim();
+    if (!text) throw new Error('Signature text is empty. Please type your name.');
+    assertLatinText(text);
+    const font = await doc.embedFont(StandardFonts.TimesRomanItalic);
+    const baseSize = 100;
+    const baseW = font.widthOfTextAtSize(text, baseSize);
+    aspect = font.heightAtSize(baseSize) / baseW;
+    draw = (page, x, y, w) => {
+      const size = (w / baseW) * baseSize;
+      page.drawText(text, { x, y, size, font, color: rgb(0.05, 0.1, 0.45) });
+    };
+  }
+
+  for (const idx of targets) {
+    const page = doc.getPage(idx);
+    const { width, height } = page.getSize();
+    const w = (width * widthPct) / 100;
+    const h = w * aspect;
+    const x = position.endsWith('left') ? margin : position.endsWith('right') ? width - margin - w : (width - w) / 2;
+    const y = position.startsWith('top') ? height - margin - h : position === 'center' ? (height - h) / 2 : margin;
+    draw(page, x, y, w);
+  }
+
+  const bytes = await doc.save();
+  const blob = new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'application/pdf' });
+  return { blob, originalSize: file.size, newSize: blob.size, pageCount: total };
 }

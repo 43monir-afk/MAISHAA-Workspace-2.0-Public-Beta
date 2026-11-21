@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useWorkspace } from '../../context/WorkspaceContext';
-import { checkAiStatus, requestDocumentAi, AiStatusResult } from '../../services/aiService';
+import { checkAiStatus, requestDocumentAi, AiStatusResult, AiAccessError } from '../../services/aiService';
+import { useAuth } from '../../context/AuthContext';
+import { UsageInfo, fetchUsage } from '../../services/authService';
 import { PrivacyIndicator } from '../common/PrivacyIndicator';
 import {
   Sparkles,
@@ -21,6 +23,7 @@ export const AiAssistantDrawer: React.FC = () => {
   const {
     isAiDrawerOpen,
     setIsAiDrawerOpen,
+    setActiveModule,
     activeDocumentText,
     activeDocumentName,
     requestAiConsent,
@@ -38,14 +41,23 @@ export const AiAssistantDrawer: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [accessCode, setAccessCode] = useState<string | null>(null);
+  const [usage, setUsage] = useState<UsageInfo | null>(null);
+  const { user, plan } = useAuth();
+
+  const refreshUsage = () => {
+    fetchUsage().then((r) => r.ok && setUsage(r.data));
+  };
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (isAiDrawerOpen) {
       checkAiStatus().then(setAiStatus);
+      refreshUsage();
     }
-  }, [isAiDrawerOpen]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAiDrawerOpen, user, plan]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -58,6 +70,16 @@ export const AiAssistantDrawer: React.FC = () => {
     if (!prompt) return;
 
     setErrorMessage(null);
+    setAccessCode(null);
+
+    // Free AI needs an account (server enforces it too)
+    if (!user && plan !== 'pro') {
+      setAccessCode('LOGIN_REQUIRED');
+      setErrorMessage(
+        language === 'bn' ? 'এআই ব্যবহার করতে সাইন ইন করুন (ফ্রি অ্যাকাউন্টেই হবে)।' : 'Please sign in to use AI (a free account is enough).'
+      );
+      return;
+    }
 
     // If server is NOT_CONFIGURED, report immediately without fake simulation
     if (aiStatus.status === 'NOT_CONFIGURED') {
@@ -97,9 +119,11 @@ export const AiAssistantDrawer: React.FC = () => {
 
         setMessages((prev) => [...prev, aiMsg]);
       } catch (err: any) {
+        if (err instanceof AiAccessError) setAccessCode(err.code);
         setErrorMessage(err.message || 'AI request failed');
       } finally {
         setIsGenerating(false);
+        refreshUsage();
       }
     });
   };
@@ -282,9 +306,29 @@ export const AiAssistantDrawer: React.FC = () => {
           )}
 
           {errorMessage && (
-            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300 flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-              <span>{errorMessage}</span>
+            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300 space-y-2">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                <span>{errorMessage}</span>
+              </div>
+              {accessCode === 'LOGIN_REQUIRED' && (
+                <button
+                  type="button"
+                  onClick={() => { setIsAiDrawerOpen(false); setActiveModule('signin'); }}
+                  className="px-3 py-1.5 rounded-lg bg-teal-500 text-slate-950 font-bold"
+                >
+                  {language === 'bn' ? 'সাইন ইন / অ্যাকাউন্ট খুলুন' : 'Sign in / Create account'}
+                </button>
+              )}
+              {(accessCode === 'PRO_REQUIRED' || accessCode === 'LIMIT_REACHED') && plan === 'free' && (
+                <button
+                  type="button"
+                  onClick={() => { setIsAiDrawerOpen(false); setActiveModule('pricing'); }}
+                  className="px-3 py-1.5 rounded-lg bg-amber-400 text-slate-950 font-bold"
+                >
+                  {language === 'bn' ? 'Pro প্ল্যান দেখুন' : 'See Pro plan'}
+                </button>
+              )}
             </div>
           )}
 
@@ -318,7 +362,11 @@ export const AiAssistantDrawer: React.FC = () => {
           </form>
           <div className="flex items-center justify-between text-[11px] text-slate-500">
             <span>{language === 'bn' ? 'ফলাফল সম্পূর্ণ ডকুমেন্টে গ্রাউন্ডেড' : 'Grounded in document context only'}</span>
-            <span className="font-mono">gemini-3.8-flash</span>
+            <span className="font-mono">
+              {usage && usage.signedIn && usage.features.aiChat
+                ? `${usage.features.aiChat.used}/${usage.features.aiChat.daily} ${language === 'bn' ? 'আজ' : 'today'} · ${plan.toUpperCase()}`
+                : 'gemini-3.8-flash'}
+            </span>
           </div>
         </div>
       </div>
