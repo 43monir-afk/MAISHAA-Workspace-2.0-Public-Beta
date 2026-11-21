@@ -1,4 +1,4 @@
-export type BgRemovalProvider = 'local' | 'cloud_removebg' | 'cloud_gemini';
+export type BgRemovalProvider = 'ai_segmentation' | 'legacy_color' | 'local' | 'cloud_removebg' | 'cloud_gemini';
 
 export type JobStatusType = 'IDLE' | 'QUEUED' | 'PROCESSING' | 'SUCCESS' | 'FAILED' | 'CANCELLED';
 
@@ -12,6 +12,7 @@ export interface BgImageItem {
   originalImage: HTMLImageElement | null;
   // Alpha mask array: 0 = transparent, 255 = fully opaque
   alphaMask: Uint8Array | null;
+  originalAlphaMask?: Uint8Array | null; // Saved original mask for Reset action
   maskCanvas: HTMLCanvasElement | null;
   // Result transparent cutout
   cutoutCanvas: HTMLCanvasElement | null;
@@ -20,7 +21,7 @@ export interface BgImageItem {
   status: JobStatusType;
   progress: number;
   errorMessage?: string;
-  providerUsed?: 'local' | 'removebg' | 'gemini';
+  providerUsed?: 'ai_segmentation' | 'legacy_color' | 'local' | 'removebg' | 'gemini';
   // Manual brush stroke history for Undo / Redo
   history: ImageData[];
   historyIndex: number;
@@ -103,10 +104,16 @@ export interface BgDesignSettings {
 }
 
 export interface BgRemovalOptions {
-  tolerance: number; // 5 to 100
-  featherRadius: number; // 0 to 10
-  smartAlpha: boolean;
-  provider: BgRemovalProvider;
+  provider: BgRemovalProvider; // Default: 'ai_segmentation'
+  targetSubject?: 'auto' | 'person' | 'object'; // 'person' = MediaPipe full-body portrait, 'object' = IS-Net salient matting
+  tolerance?: number; // 5 to 100 (for legacy_color mode)
+  featherRadius?: number; // 0 to 10
+  smartAlpha?: boolean;
+  modelVariant?: 'small' | 'medium' | 'large'; // IS-Net variant
+  edgeSmoothing?: number; // 0 to 5
+  removeIslands?: boolean; // Small background-island removal
+  holeCorrection?: boolean; // Selective mask-hole correction
+  hairRefinement?: boolean; // Fine hair & fabric edge boundary refinement
 }
 
 export interface ProviderStatus {

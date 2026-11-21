@@ -79,6 +79,12 @@ const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefin
 export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const resolveRouteState = (pathname: string): { module: ToolCategory; subTab: string | null } => {
     const p = pathname.toLowerCase();
+    if (p.startsWith('/pricing')) return { module: 'pricing', subTab: null };
+    if (p.startsWith('/contact')) return { module: 'contact', subTab: null };
+    if (p.startsWith('/download')) return { module: 'download', subTab: null };
+    if (p.startsWith('/signin')) return { module: 'signin', subTab: null };
+    if (p.startsWith('/account')) return { module: 'account', subTab: null };
+    if (p.startsWith('/admin')) return { module: 'admin', subTab: null };
     if (p.includes('/image-studio/background-remover') || p.includes('/background-remover')) {
       return { module: 'bg_remover', subTab: null };
     }
@@ -96,6 +102,9 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
     if (p.includes('/pdf-studio/organize')) {
       return { module: 'pdf', subTab: 'organize' };
+    }
+    if (p.includes('/pdf-studio/pdf-to-jpg') || p.includes('/pdf-studio/pdf-to-images')) {
+      return { module: 'pdf', subTab: 'pdfToImages' };
     }
     if (p.includes('/pdf-studio/convert')) {
       return { module: 'pdf', subTab: 'convert' };
@@ -194,6 +203,12 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       else if (mod === 'tutorials') targetPath = '/tutorials';
       else if (mod === 'privacy') targetPath = '/privacy';
       else if (mod === 'about') targetPath = '/about';
+      else if (mod === 'pricing') targetPath = '/pricing';
+      else if (mod === 'contact') targetPath = '/contact';
+      else if (mod === 'download') targetPath = '/download';
+      else if (mod === 'signin') targetPath = '/signin';
+      else if (mod === 'account') targetPath = '/account';
+      else if (mod === 'admin') targetPath = '/admin';
       else if (mod === 'universal') targetPath = '/';
 
       if (window.location.pathname !== targetPath) {

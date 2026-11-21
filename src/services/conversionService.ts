@@ -7,6 +7,8 @@
 import * as XLSX from 'xlsx';
 import { parseDocxDocument, validateUnicodeExtraction } from './docIntelService';
 import { extractPdfText } from './pdfService';
+import { convertPdfToImages } from './pdfToImageService';
+import pptxgen from 'pptxgenjs';
 import { parsePresentation } from './slidesIntelService';
 import { exportToPdf, exportToDocx } from './directExportService';
 import { generateSafeOutputFilename } from '../utils/fileDetection';
@@ -276,5 +278,80 @@ export async function convertPptxToPdf(file: File): Promise<ConversionResult> {
       pagesOrSheets: analysis.slideCount,
       wordCount: analysis.totalWordCount,
     },
+  };
+}
+
+
+export interface SlideImage {
+  /** Image bytes (PNG or JPEG) of one PDF page */
+  bytes: Uint8Array;
+  mime: 'image/png' | 'image/jpeg';
+  width: number;
+  height: number;
+}
+
+function toBase64(bytes: Uint8Array): string {
+  let bin = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(bin);
+}
+
+/**
+ * Build a PPTX with one full-slide picture per page. The slide size follows the first page's proportions.
+ */
+export async function buildPptxFromPageImages(images: SlideImage[], title: string): Promise<Blob> {
+  if (images.length === 0) throw new Error('No pages to convert.');
+  const pres = new pptxgen();
+  const first = images[0];
+  // Keep the slide 10 inches wide and derive the height from the page's proportions.
+  const slideW = 10;
+  const slideH = Math.max(3, Math.min(20, (slideW * first.height) / first.width));
+  pres.defineLayout({ name: 'PDF_PAGE', width: slideW, height: slideH });
+  pres.layout = 'PDF_PAGE';
+  pres.title = title;
+
+  for (const img of images) {
+    const slide = pres.addSlide();
+    slide.addImage({
+      data: `data:${img.mime};base64,${toBase64(img.bytes)}`,
+      x: 0,
+      y: 0,
+      w: slideW,
+      h: slideH,
+    });
+  }
+  const buffer = (await pres.write({ outputType: 'arraybuffer' })) as ArrayBuffer;
+  return new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  });
+}
+
+/**
+ * Convert PDF to PowerPoint: every page becomes a slide that looks exactly like the page.
+ * Slides are pictures, so the text on them is NOT editable (a real text/layout reconstruction is not supported).
+ */
+export async function convertPdfToPptx(file: File): Promise<ConversionResult> {
+  const rendered = await convertPdfToImages(file, { format: 'image/jpeg', quality: 0.9, scale: 2 });
+  const images: SlideImage[] = [];
+  for (const img of rendered.images) {
+    images.push({
+      bytes: new Uint8Array(await img.blob.arrayBuffer()),
+      mime: 'image/jpeg',
+      width: img.width,
+      height: img.height,
+    });
+  }
+  const title = file.name.replace(/\.[^/.]+$/, '');
+  const blob = await buildPptxFromPageImages(images, title);
+  return {
+    blob,
+    outputFilename: generateSafeOutputFilename(file.name, 'slides', 'pptx'),
+    originalSize: file.size,
+    newSize: blob.size,
+    formatDescription: 'PDF to PowerPoint (PPTX): one picture slide per page',
+    metrics: { pagesOrSheets: images.length },
   };
 }

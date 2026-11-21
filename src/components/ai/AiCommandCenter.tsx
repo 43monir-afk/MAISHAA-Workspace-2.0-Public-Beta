@@ -18,6 +18,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import JSZip from 'jszip';
+import { AdSlot } from '../common/AdSlot';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import {
   AiCommandStatus,
@@ -2640,6 +2641,9 @@ export const AiCommandCenter: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Ad slot: bottom of the page only, never beside the chat or download buttons */}
+        <AdSlot placement="tool-result-bottom" className="mt-4" />
       </div>
     </div>
   );

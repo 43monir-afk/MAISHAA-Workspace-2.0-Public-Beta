@@ -7,23 +7,39 @@ import {
   deletePages,
   rotatePages,
   imagesToPdf,
+  convertPdfToImages,
+  parsePageRange,
   optimizePdf,
   repairDamagedPdf,
   convertToPdfA,
   cropPdfPages,
   fillPdfAcroForm,
+  addWatermark,
+  addPageNumbers,
+  reorderPages,
+  addSignature,
+  type PageNumberPosition,
+  type SignaturePosition,
+  type SignatureSource,
   getPdfMetadata,
   PdfMetadata,
+  type PdfPageImage,
 } from '../../services/pdfService';
-import {
-  encryptPdfWithPassword,
-  decryptPdfWithPassword,
-  isPdfEncrypted,
-} from '../../services/pdfSecurityService';
+import { PDFDocument } from 'pdf-lib';
+import SignaturePad from './SignaturePad';
+import RedactionEditor from './RedactionEditor';
+import PdfEditor from './PdfEditor';
+import { comparePdfsToReport } from '../../services/pdfCompareService';
+import { redactPdf, type RedactRect } from '../../services/pdfRedactService';
+import { decryptPdfWithPassword, isPdfEncrypted } from '../../services/pdfSecurityService';
+import { encryptPdfStandard, decryptPdfStandard } from '../../services/pdfStandardEncryptionService';
 import { formatFileSize, generateSafeOutputFilename } from '../../utils/fileDetection';
 import { createManagedObjectUrl } from '../../utils/privacy';
 import { downloadFileOnce } from '../../utils/downloadHelper';
 import { AdSlot } from '../common/AdSlot';
+import { ProGate, ProMark } from '../site/ProGate';
+import { useAuth } from '../../context/AuthContext';
+import { isProPdfTab } from '../../config/plans';
 import { ToolSeoGuide } from '../common/ToolSeoGuide';
 import {
   FileText,
@@ -51,7 +67,20 @@ import {
   Crop,
   FormInput,
   Key,
+  Eye,
+  X,
+  ArrowUpDown,
+  GitCompare,
+  EyeOff,
+  PenLine,
+  Stamp,
+  Hash,
+  ImageDown,
+  Type,
+  Layers,
+  Pencil,
 } from 'lucide-react';
+import { extractPdfImages, addTextToPdf, overlayPdf } from '../../services/pdfExtrasService';
 
 type PdfSubTab =
   | 'merge'
@@ -61,12 +90,23 @@ type PdfSubTab =
   | 'rotate'
   | 'crop'
   | 'imagesToPdf'
+  | 'pdfToImages'
   | 'compress'
   | 'protect'
   | 'unlock'
   | 'repair'
   | 'pdfa'
   | 'forms'
+  | 'watermark'
+  | 'pageNumbers'
+  | 'reorder'
+  | 'sign'
+  | 'redact'
+  | 'compare'
+  | 'extractImages'
+  | 'addText'
+  | 'overlay'
+  | 'editor'
   | 'metadata';
 
 export const PdfStudio: React.FC = () => {
@@ -81,11 +121,12 @@ export const PdfStudio: React.FC = () => {
   } = useWorkspace();
 
   const [activeSubTab, setActiveSubTab] = useState<PdfSubTab>('merge');
+  const { isPro } = useAuth();
 
   // Deep-link routing synchronization
   useEffect(() => {
     if (pdfInitialTab) {
-      if (['merge', 'split', 'compress', 'delete', 'extract', 'crop', 'protect', 'unlock', 'repair', 'pdfa', 'forms', 'metadata'].includes(pdfInitialTab)) {
+      if (['merge', 'split', 'compress', 'delete', 'extract', 'crop', 'protect', 'unlock', 'repair', 'pdfa', 'forms', 'metadata', 'pdfToImages', 'watermark', 'pageNumbers', 'reorder', 'sign', 'redact', 'compare', 'extractImages', 'addText', 'overlay', 'editor'].includes(pdfInitialTab)) {
         setActiveSubTab(pdfInitialTab as PdfSubTab);
       } else if (pdfInitialTab === 'organize') {
         setActiveSubTab('rotate');
@@ -103,6 +144,52 @@ export const PdfStudio: React.FC = () => {
   const [rotateAngle, setRotateAngle] = useState<90 | 180 | 270>(90);
   const [rotateScope, setRotateScope] = useState<'all' | 'custom'>('all');
   const [rotatePagesInput, setRotatePagesInput] = useState<string>('1');
+
+  // Watermark / page numbers / reorder parameters
+  const [watermarkText, setWatermarkText] = useState<string>('CONFIDENTIAL');
+  const [watermarkOpacity, setWatermarkOpacity] = useState<number>(25);
+  const [watermarkSize, setWatermarkSize] = useState<number>(56);
+  const [watermarkColor, setWatermarkColor] = useState<string>('#888888');
+  const [pageNumberPosition, setPageNumberPosition] = useState<PageNumberPosition>('bottom-center');
+  const [pageNumberStart, setPageNumberStart] = useState<number>(1);
+  const [pageNumberShowTotal, setPageNumberShowTotal] = useState<boolean>(false);
+  const [reorderInput, setReorderInput] = useState<string>('');
+
+  // Extra tools (PDF24-inspired): Add text, Overlay
+  const [addTextValue, setAddTextValue] = useState<string>('');
+  const [addTextPage, setAddTextPage] = useState<number>(1);
+  const [addTextX, setAddTextX] = useState<number>(10);
+  const [addTextY, setAddTextY] = useState<number>(10);
+  const [addTextSize, setAddTextSize] = useState<number>(14);
+  const [addTextColor, setAddTextColor] = useState<string>('#000000');
+  const [overlayPosition, setOverlayPosition] = useState<'over' | 'under'>('over');
+  const [overlayPageMode, setOverlayPageMode] = useState<'first' | 'match'>('first');
+  const [extractNote, setExtractNote] = useState<string | null>(null);
+
+  // Redact PDF parameters
+  const [redactRects, setRedactRects] = useState<RedactRect[]>([]);
+  // Boxes belong to one file: drop them when the file changes.
+  const redactFile = selectedFiles[0];
+  useEffect(() => {
+    setRedactRects([]);
+  }, [redactFile]);
+
+  // Sign PDF parameters
+  const [signMode, setSignMode] = useState<'draw' | 'type' | 'upload'>('draw');
+  const [signText, setSignText] = useState<string>('');
+  const [signImage, setSignImage] = useState<{ bytes: Uint8Array; mime: 'image/png' | 'image/jpeg' } | null>(null);
+  const [signPages, setSignPages] = useState<'first' | 'last' | 'all'>('last');
+  const [signPosition, setSignPosition] = useState<SignaturePosition>('bottom-right');
+  const [signWidth, setSignWidth] = useState<number>(25);
+
+  // PDF to Image Specific Parameters
+  const [pdfImageFormat, setPdfImageFormat] = useState<'image/jpeg' | 'image/png'>('image/jpeg');
+  const [pdfImageScale, setPdfImageScale] = useState<number>(2.0);
+  const [pdfImageQuality, setPdfImageQuality] = useState<number>(92);
+  const [pdfImagePageScope, setPdfImagePageScope] = useState<'all' | 'custom'>('all');
+  const [pdfImagePageRangeInput, setPdfImagePageRangeInput] = useState<string>('1');
+  const [pdfConvertedPages, setPdfConvertedPages] = useState<PdfPageImage[]>([]);
+  const [pdfPreviewModalUrl, setPdfPreviewModalUrl] = useState<string | null>(null);
 
   // Advanced PDF Studio Parameters (iLovePDF parity)
   const [passwordInput, setPasswordInput] = useState<string>('');
@@ -166,7 +253,7 @@ export const PdfStudio: React.FC = () => {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
     const newFiles = Array.from(e.target.files);
-    if (activeSubTab === 'merge' || activeSubTab === 'imagesToPdf') {
+    if (activeSubTab === 'merge' || activeSubTab === 'imagesToPdf' || activeSubTab === 'compare' || activeSubTab === 'overlay') {
       setSelectedFiles((prev) => [...prev, ...newFiles]);
     } else {
       setSelectedFiles(newFiles.slice(0, 1));
@@ -279,6 +366,139 @@ export const PdfStudio: React.FC = () => {
           break;
         }
 
+        case 'watermark': {
+          result = await addWatermark(selectedFiles[0], {
+            text: watermarkText,
+            opacity: watermarkOpacity / 100,
+            fontSize: watermarkSize,
+            color: watermarkColor,
+          });
+          outName = generateSafeOutputFilename(selectedFiles[0].name, 'watermarked', 'pdf');
+          break;
+        }
+
+        case 'pageNumbers': {
+          result = await addPageNumbers(selectedFiles[0], {
+            position: pageNumberPosition,
+            startAt: pageNumberStart,
+            showTotal: pageNumberShowTotal,
+          });
+          outName = generateSafeOutputFilename(selectedFiles[0].name, 'numbered', 'pdf');
+          break;
+        }
+
+        case 'extractImages': {
+          const ex = await extractPdfImages(selectedFiles[0]);
+          if (!ex.zipBlob) {
+            throw new Error(
+              language === 'bn'
+                ? 'এই PDF থেকে বের করার মতো ছবি পাওয়া যায়নি (স্ক্যান বা বিশেষ ফরম্যাটের ছবি বাদ যেতে পারে)।'
+                : 'No exportable images were found in this PDF (some special image types cannot be exported).'
+            );
+          }
+          setExtractNote(
+            language === 'bn'
+              ? `${ex.images.length}টি ছবি বের হয়েছে${ex.skipped ? `, ${ex.skipped}টি বিশেষ ধরনের ছবি বাদ গেছে` : ''}।`
+              : `${ex.images.length} image(s) extracted${ex.skipped ? `, ${ex.skipped} unsupported image(s) skipped` : ''}.`
+          );
+          result = {
+            blob: ex.zipBlob,
+            originalSize: selectedFiles[0].size,
+            newSize: ex.zipBlob.size,
+            pageCount: ex.images.length,
+            meaningfulReduction: false,
+          };
+          outName = generateSafeOutputFilename(selectedFiles[0].name, 'images', 'zip');
+          break;
+        }
+
+        case 'addText': {
+          result = await addTextToPdf(selectedFiles[0], [
+            { page: addTextPage, text: addTextValue, xPct: addTextX, yPct: addTextY, size: addTextSize, color: addTextColor },
+          ]);
+          outName = generateSafeOutputFilename(selectedFiles[0].name, 'text_added', 'pdf');
+          break;
+        }
+
+        case 'overlay': {
+          if (selectedFiles.length !== 2) {
+            throw new Error(
+              language === 'bn'
+                ? 'ঠিক দুটি PDF দিন: প্রথমটি মূল ফাইল, দ্বিতীয়টি ওভারলে (লেটারহেড/স্ট্যাম্প)।'
+                : 'Add exactly two PDFs: the base file first, the overlay (letterhead/stamp) second.'
+            );
+          }
+          result = await overlayPdf(selectedFiles[0], selectedFiles[1], {
+            position: overlayPosition,
+            pageMode: overlayPageMode,
+          });
+          outName = generateSafeOutputFilename(selectedFiles[0].name, 'overlay', 'pdf');
+          break;
+        }
+
+        case 'compare': {
+          if (selectedFiles.length !== 2) {
+            throw new Error(
+              language === 'bn'
+                ? 'তুলনার জন্য ঠিক দুটি PDF বেছে নিন (প্রথমটি পুরোনো, দ্বিতীয়টি নতুন)।'
+                : 'Select exactly two PDFs to compare (first = original, second = changed).'
+            );
+          }
+          const cmp = await comparePdfsToReport(selectedFiles[0], selectedFiles[1]);
+          result = {
+            blob: cmp.blob,
+            originalSize: selectedFiles[0].size + selectedFiles[1].size,
+            newSize: cmp.size,
+            pageCount: cmp.pageCount,
+            meaningfulReduction: false,
+          };
+          outName = generateSafeOutputFilename(selectedFiles[0].name, 'comparison_report', 'pdf');
+          break;
+        }
+
+        case 'redact': {
+          const red = await redactPdf(selectedFiles[0], redactRects);
+          result = {
+            blob: red.blob,
+            originalSize: red.originalSize,
+            newSize: red.newSize,
+            pageCount: red.pageCount,
+            meaningfulReduction: false,
+          };
+          outName = generateSafeOutputFilename(selectedFiles[0].name, 'redacted', 'pdf');
+          break;
+        }
+
+        case 'sign': {
+          let signature: SignatureSource;
+          if (signMode === 'type') {
+            signature = { kind: 'text', text: signText };
+          } else {
+            if (!signImage) {
+              throw new Error(
+                signMode === 'draw'
+                  ? 'Please draw your signature first.'
+                  : 'Please choose a PNG or JPG signature image first.'
+              );
+            }
+            signature = { kind: 'image', bytes: signImage.bytes, mime: signImage.mime };
+          }
+          result = await addSignature(selectedFiles[0], {
+            signature,
+            pages: signPages,
+            position: signPosition,
+            widthPercent: signWidth,
+          });
+          outName = generateSafeOutputFilename(selectedFiles[0].name, 'signed', 'pdf');
+          break;
+        }
+
+        case 'reorder': {
+          result = await reorderPages(selectedFiles[0], reorderInput);
+          outName = generateSafeOutputFilename(selectedFiles[0].name, 'reordered', 'pdf');
+          break;
+        }
+
         case 'imagesToPdf': {
           result = await imagesToPdf(selectedFiles);
           outName = generateSafeOutputFilename(
@@ -286,6 +506,29 @@ export const PdfStudio: React.FC = () => {
             'compiled_presentation',
             'pdf'
           );
+          break;
+        }
+
+        case 'pdfToImages': {
+          const pages = pdfImagePageScope === 'custom'
+            ? parsePageRange(pdfImagePageRangeInput, 9999)
+            : undefined;
+          const convRes = await convertPdfToImages(selectedFiles[0], {
+            format: pdfImageFormat,
+            quality: pdfImageQuality / 100,
+            scale: pdfImageScale,
+            pageNumbers: pages,
+          });
+          setPdfConvertedPages(convRes.images);
+          const outBlob = convRes.zipBlob || convRes.images[0].blob;
+          outName = convRes.zipFilename || convRes.images[0].filename;
+          result = {
+            blob: outBlob,
+            originalSize: selectedFiles[0].size,
+            newSize: outBlob.size,
+            pageCount: convRes.selectedPageCount,
+            meaningfulReduction: false,
+          };
           break;
         }
 
@@ -310,12 +553,19 @@ export const PdfStudio: React.FC = () => {
         }
 
         case 'protect': {
-          const enc = await encryptPdfWithPassword(selectedFiles[0], passwordInput);
+          // Standard AES-256 PDF encryption: opens with a password in Acrobat, Chrome, phones, etc.
+          const enc = await encryptPdfStandard(selectedFiles[0], passwordInput);
+          let pages = 1;
+          try {
+            pages = (await PDFDocument.load(await selectedFiles[0].arrayBuffer(), { ignoreEncryption: true })).getPageCount();
+          } catch {
+            /* page count is informational only */
+          }
           result = {
             blob: enc.blob,
             originalSize: selectedFiles[0].size,
             newSize: enc.size,
-            pageCount: 1,
+            pageCount: pages,
             meaningfulReduction: false,
           };
           outName = generateSafeOutputFilename(
@@ -327,12 +577,22 @@ export const PdfStudio: React.FC = () => {
         }
 
         case 'unlock': {
-          const dec = await decryptPdfWithPassword(selectedFiles[0], passwordInput);
+          // Files protected by older versions of this app use the legacy envelope; everything else is a standard PDF.
+          const isLegacy = await isPdfEncrypted(selectedFiles[0]);
+          const dec = isLegacy
+            ? await decryptPdfWithPassword(selectedFiles[0], passwordInput)
+            : await decryptPdfStandard(selectedFiles[0], passwordInput);
+          let unlockedPages = 1;
+          try {
+            unlockedPages = (await PDFDocument.load(await dec.blob.arrayBuffer())).getPageCount();
+          } catch {
+            /* page count is informational only */
+          }
           result = {
             blob: dec.blob,
             originalSize: selectedFiles[0].size,
             newSize: dec.size,
-            pageCount: 1,
+            pageCount: unlockedPages,
             meaningfulReduction: false,
           };
           outName = generateSafeOutputFilename(
@@ -440,13 +700,24 @@ export const PdfStudio: React.FC = () => {
   };
 
   const navTabs = [
+    { id: 'editor', label: language === 'bn' ? 'PDF এডিটর' : 'PDF Editor', icon: Pencil },
     { id: 'merge', label: t.pdf.merge, icon: Combine },
     { id: 'split', label: t.pdf.split, icon: Split },
     { id: 'extract', label: t.pdf.extract, icon: Scissors },
     { id: 'delete', label: t.pdf.deletePages, icon: Trash2 },
     { id: 'rotate', label: t.pdf.rotate, icon: RotateCw },
     { id: 'crop', label: language === 'bn' ? 'ক্রপ পৃষ্ঠা' : 'Crop Pages', icon: Crop },
+    { id: 'compare', label: language === 'bn' ? 'PDF তুলনা' : 'Compare PDF', icon: GitCompare },
+    { id: 'redact', label: language === 'bn' ? 'তথ্য লুকান (Redact)' : 'Redact PDF', icon: EyeOff },
+    { id: 'addText', label: language === 'bn' ? 'লেখা যোগ করুন' : 'Add Text', icon: Type },
+    { id: 'overlay', label: language === 'bn' ? 'ওভারলে' : 'Overlay PDF', icon: Layers },
+    { id: 'extractImages', label: language === 'bn' ? 'ছবি বের করুন' : 'Extract Images', icon: ImageDown },
+    { id: 'sign', label: language === 'bn' ? 'সই করুন' : 'Sign PDF', icon: PenLine },
+    { id: 'reorder', label: language === 'bn' ? 'পৃষ্ঠা সাজান' : 'Reorder Pages', icon: ArrowUpDown },
+    { id: 'watermark', label: language === 'bn' ? 'ওয়াটারমার্ক' : 'Watermark', icon: Stamp },
+    { id: 'pageNumbers', label: language === 'bn' ? 'পৃষ্ঠা নম্বর' : 'Page Numbers', icon: Hash },
     { id: 'imagesToPdf', label: t.pdf.imagesToPdf, icon: ImageIcon },
+    { id: 'pdfToImages', label: t.pdf.pdfToImages, icon: ImageIcon },
     { id: 'compress', label: t.pdf.compress, icon: Minimize2 },
     { id: 'protect', label: language === 'bn' ? 'পাসওয়ার্ড সুরক্ষা' : 'Protect PDF', icon: Lock },
     { id: 'unlock', label: language === 'bn' ? 'আনলক পিডিএফ' : 'Unlock PDF', icon: Unlock },
@@ -455,6 +726,8 @@ export const PdfStudio: React.FC = () => {
     { id: 'forms', label: language === 'bn' ? 'অ্যাক্রোফর্ম পূরণ' : 'AcroForms', icon: FormInput },
     { id: 'metadata', label: t.pdf.metadata, icon: Info },
   ];
+
+  const proLocked = isProPdfTab(activeSubTab) && !isPro;
 
   return (
     <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full space-y-6">
@@ -487,7 +760,7 @@ export const PdfStudio: React.FC = () => {
               onClick={() => {
                 setActiveSubTab(tab.id as PdfSubTab);
                 setProcessingError(null);
-                setLastResult(null);
+                setLastResult(null); setExtractNote(null);
               }}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition-all ${
                 isActive
@@ -497,13 +770,23 @@ export const PdfStudio: React.FC = () => {
             >
               <Icon className="w-4 h-4" />
               <span>{tab.label}</span>
+              {isProPdfTab(tab.id) && !isPro && <ProMark />}
             </button>
           );
         })}
       </div>
 
-      {/* Main Studio Interactive Workspace */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      {proLocked && (
+        <ProGate name={navTabs.find((x) => x.id === activeSubTab)?.label || 'PDF'}>
+          <></>
+        </ProGate>
+      )}
+
+      {/* Main Studio Interactive Workspace (kept mounted but hidden while Pro-locked) */}
+      {activeSubTab === 'editor' && !proLocked && (
+        <PdfEditor language={language === 'bn' ? 'bn' : 'en'} initialFile={selectedFiles[0] ?? stagedFiles?.find((f) => f.name.toLowerCase().endsWith('.pdf')) ?? null} />
+      )}
+      <div className={proLocked || activeSubTab === 'editor' ? 'hidden' : 'grid grid-cols-1 lg:grid-cols-12 gap-6 items-start'}>
         {/* Left Column: File Staging & Configuration */}
         <div className="lg:col-span-7 space-y-5">
           {/* File Picker / Drop Zone */}
@@ -529,7 +812,7 @@ export const PdfStudio: React.FC = () => {
             <input
               id="pdfStudioFileInput"
               type="file"
-              multiple={activeSubTab === 'merge' || activeSubTab === 'imagesToPdf'}
+              multiple={activeSubTab === 'merge' || activeSubTab === 'imagesToPdf' || activeSubTab === 'compare' || activeSubTab === 'overlay'}
               accept={activeSubTab === 'imagesToPdf' ? '.png,.jpg,.jpeg,.webp' : '.pdf'}
               className="hidden"
               onChange={handleFileSelect}
@@ -612,7 +895,7 @@ export const PdfStudio: React.FC = () => {
                 </div>
 
                 {/* Add more files button */}
-                {(activeSubTab === 'merge' || activeSubTab === 'imagesToPdf') && (
+                {(activeSubTab === 'merge' || activeSubTab === 'imagesToPdf' || activeSubTab === 'compare' || activeSubTab === 'overlay') && (
                   <label
                     htmlFor="pdfStudioFileInput"
                     className="inline-flex items-center gap-1.5 text-xs text-teal-400 hover:text-teal-300 font-medium cursor-pointer pt-1"
@@ -731,6 +1014,382 @@ export const PdfStudio: React.FC = () => {
                 </div>
               )}
 
+              {/* Extract Images Options */}
+              {activeSubTab === 'extractImages' && (
+                <p className="text-[11px] text-slate-300">
+                  {language === 'bn'
+                    ? 'PDF-এর ভেতরের ছবিগুলো আসল মান ধরে ZIP হিসেবে নামবে (JPEG ও সাধারণ RGB/Gray ছবি)। মাস্ক, CMYK ও বিশেষ এনকোডিংয়ের ছবি বাদ যেতে পারে; বাদ গেলে সংখ্যা জানানো হবে।'
+                    : 'Embedded pictures are saved at original quality in a ZIP (JPEG and plain RGB/Gray images). Masks, CMYK and special encodings may be skipped; the skipped count is shown.'}
+                </p>
+              )}
+
+              {/* Add Text Options */}
+              {activeSubTab === 'addText' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs text-slate-300 font-medium block mb-1.5">
+                      {language === 'bn' ? 'যে লেখা বসাবেন (ইংরেজি; নতুন লাইনে Enter)' : 'Text to add (English; Enter for new line)'}
+                    </label>
+                    <textarea
+                      value={addTextValue}
+                      onChange={(e) => setAddTextValue(e.target.value)}
+                      rows={3}
+                      className="w-full px-3.5 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs focus:outline-hidden focus:border-teal-400"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([
+                      [language === 'bn' ? 'পৃষ্ঠা' : 'Page', addTextPage, setAddTextPage, 1, 9999],
+                      [language === 'bn' ? 'বাম থেকে %' : 'From left %', addTextX, setAddTextX, 0, 100],
+                      [language === 'bn' ? 'উপর থেকে %' : 'From top %', addTextY, setAddTextY, 0, 100],
+                    ] as const).map(([label, val, setter, min, max]) => (
+                      <div key={label}>
+                        <span className="text-[10px] text-slate-400 block mb-1">{label}</span>
+                        <input
+                          type="number"
+                          min={min}
+                          max={max}
+                          value={val}
+                          onChange={(e) => setter(Math.min(max, Math.max(min, parseInt(e.target.value, 10) || min)))}
+                          className="w-full px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <span className="text-[10px] text-slate-400 block mb-1">{language === 'bn' ? 'আকার' : 'Size'}</span>
+                      <input
+                        type="number"
+                        min={6}
+                        max={200}
+                        value={addTextSize}
+                        onChange={(e) => setAddTextSize(parseInt(e.target.value, 10) || 14)}
+                        className="w-full px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block mb-1">{language === 'bn' ? 'রং' : 'Colour'}</span>
+                      <input
+                        type="color"
+                        value={addTextColor}
+                        onChange={(e) => setAddTextColor(e.target.value)}
+                        className="w-full h-8 rounded-lg bg-slate-800 border border-slate-700"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    {language === 'bn'
+                      ? 'এটি বিদ্যমান লেখা বদলায় না, শুধু নতুন লেখা যোগ করে। বাংলা লেখা এখানে সমর্থিত নয়।'
+                      : 'This adds new text on top; it does not edit existing text. Bengali text is not supported here.'}
+                  </p>
+                </div>
+              )}
+
+              {/* Overlay Options */}
+              {activeSubTab === 'overlay' && (
+                <div className="space-y-3">
+                  <p className="text-[11px] text-slate-300">
+                    {language === 'bn'
+                      ? 'ঠিক দুটি PDF যোগ করুন: প্রথমটি মূল ফাইল, দ্বিতীয়টি ওভারলে (লেটারহেড, স্ট্যাম্প বা ফ্রেম)।'
+                      : 'Add exactly two PDFs: the base first, the overlay (letterhead, stamp or frame) second.'}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {([
+                      ['over', language === 'bn' ? 'মূল ফাইলের উপরে' : 'On top of base'],
+                      ['under', language === 'bn' ? 'মূল ফাইলের নিচে (লেটারহেড)' : 'Behind base (letterhead)'],
+                    ] as const).map(([id, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => setOverlayPosition(id)}
+                        className={`py-2 px-3 rounded-xl text-xs font-medium border ${overlayPosition === id ? 'bg-teal-500 text-slate-950 font-bold border-teal-400' : 'bg-slate-800 text-slate-300 border-slate-700'}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {([
+                      ['first', language === 'bn' ? 'ওভারলের ১ম পৃষ্ঠা সব পৃষ্ঠায়' : 'Overlay page 1 on every page'],
+                      ['match', language === 'bn' ? 'পৃষ্ঠা অনুযায়ী মিলিয়ে' : 'Match page by page'],
+                    ] as const).map(([id, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => setOverlayPageMode(id)}
+                        className={`py-2 px-3 rounded-xl text-xs font-medium border ${overlayPageMode === id ? 'bg-teal-500 text-slate-950 font-bold border-teal-400' : 'bg-slate-800 text-slate-300 border-slate-700'}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Compare Options */}
+              {activeSubTab === 'compare' && (
+                <p className="text-[11px] text-slate-300">
+                  {language === 'bn'
+                    ? 'ঠিক দুটি PDF যোগ করুন: প্রথমটি আসল, দ্বিতীয়টি পরিবর্তিত। লেখা পৃষ্ঠা ধরে ধরে তুলনা করে একটি রিপোর্ট PDF দেওয়া হবে ("-" শুধু প্রথমটিতে, "+" শুধু দ্বিতীয়টিতে)। স্ক্যান করা (ছবি) PDF তুলনা করা যায় না।'
+                    : 'Add exactly two PDFs: the original first, the changed one second. The text is compared page by page and you get a report PDF ("-" only in the first, "+" only in the second). Scanned (image-only) PDFs cannot be compared.'}
+                </p>
+              )}
+
+              {/* Redact Options */}
+              {activeSubTab === 'redact' && selectedFiles[0] && (
+                <div className="space-y-2">
+                  <RedactionEditor
+                    file={selectedFiles[0]}
+                    rects={redactRects}
+                    onChange={setRedactRects}
+                    language={language === 'bn' ? 'bn' : 'en'}
+                  />
+                  <p className="text-[11px] text-amber-300">
+                    {language === 'bn'
+                      ? 'স্থায়ীভাবে লুকানো: বাক্সসহ পৃষ্ঠাগুলো ছবিতে রূপান্তর হবে, নিচের লেখা আর থাকবে না ও ওই পৃষ্ঠার লেখা সিলেক্ট করা যাবে না। ফাইলের আকার বাড়তে পারে। আসল ফাইল অক্ষত থাকে।'
+                      : 'Permanent: pages with boxes become images, so the hidden text is truly removed, but text on those pages can no longer be selected and the file may grow. Your original file is untouched.'}
+                  </p>
+                </div>
+              )}
+
+              {/* Sign PDF Options */}
+              {activeSubTab === 'sign' && (
+                <div className="space-y-3">
+                  <div className="flex gap-1.5">
+                    {(['draw', 'type', 'upload'] as const).map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setSignMode(m)}
+                        className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-medium border ${
+                          signMode === m
+                            ? 'bg-teal-500/20 border-teal-400 text-teal-200'
+                            : 'bg-slate-800 border-slate-700 text-slate-300'
+                        }`}
+                      >
+                        {m === 'draw'
+                          ? language === 'bn' ? 'আঁকুন' : 'Draw'
+                          : m === 'type'
+                            ? language === 'bn' ? 'টাইপ' : 'Type'
+                            : language === 'bn' ? 'ছবি আপলোড' : 'Upload'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {signMode === 'draw' && (
+                    <SignaturePad
+                      onChange={(png) => setSignImage(png ? { bytes: png, mime: 'image/png' } : null)}
+                      clearLabel={language === 'bn' ? 'মুছুন' : 'Clear'}
+                      hint={language === 'bn' ? 'মাউস বা আঙুল দিয়ে সই আঁকুন' : 'Draw with mouse, finger or pen'}
+                    />
+                  )}
+
+                  {signMode === 'type' && (
+                    <div>
+                      <input
+                        type="text"
+                        value={signText}
+                        onChange={(e) => setSignText(e.target.value)}
+                        placeholder={language === 'bn' ? 'নাম লিখুন (ইংরেজি)' : 'Type your name'}
+                        className="w-full px-3.5 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs focus:outline-hidden focus:border-teal-400"
+                      />
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        {language === 'bn'
+                          ? 'টাইপ করা সই শুধু ইংরেজি অক্ষরে। বাংলা সইয়ের জন্য "আঁকুন" বা "ছবি আপলোড" বেছে নিন।'
+                          : 'Typed signatures support English letters only. For Bengali use Draw or Upload.'}
+                      </p>
+                    </div>
+                  )}
+
+                  {signMode === 'upload' && (
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg"
+                      onChange={async (e) => {
+                        const f = e.target.files?.[0];
+                        if (!f) {
+                          setSignImage(null);
+                          return;
+                        }
+                        const mime = f.type === 'image/jpeg' ? 'image/jpeg' : 'image/png';
+                        setSignImage({ bytes: new Uint8Array(await f.arrayBuffer()), mime });
+                      }}
+                      className="w-full text-xs text-slate-300"
+                    />
+                  )}
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <span className="text-[10px] text-slate-400 block mb-1">{language === 'bn' ? 'কোন পৃষ্ঠায়' : 'Pages'}</span>
+                      <select
+                        value={signPages}
+                        onChange={(e) => setSignPages(e.target.value as 'first' | 'last' | 'all')}
+                        className="w-full px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs"
+                      >
+                        <option value="last">{language === 'bn' ? 'শেষ পৃষ্ঠা' : 'Last page'}</option>
+                        <option value="first">{language === 'bn' ? 'প্রথম পৃষ্ঠা' : 'First page'}</option>
+                        <option value="all">{language === 'bn' ? 'সব পৃষ্ঠা' : 'All pages'}</option>
+                      </select>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block mb-1">{language === 'bn' ? 'অবস্থান' : 'Position'}</span>
+                      <select
+                        value={signPosition}
+                        onChange={(e) => setSignPosition(e.target.value as SignaturePosition)}
+                        className="w-full px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs"
+                      >
+                        <option value="bottom-right">{language === 'bn' ? 'নিচে ডানে' : 'Bottom right'}</option>
+                        <option value="bottom-left">{language === 'bn' ? 'নিচে বামে' : 'Bottom left'}</option>
+                        <option value="bottom-center">{language === 'bn' ? 'নিচে মাঝখানে' : 'Bottom centre'}</option>
+                        <option value="center">{language === 'bn' ? 'মাঝখানে' : 'Centre'}</option>
+                        <option value="top-right">{language === 'bn' ? 'উপরে ডানে' : 'Top right'}</option>
+                        <option value="top-left">{language === 'bn' ? 'উপরে বামে' : 'Top left'}</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block mb-1">
+                      {language === 'bn' ? `সইয়ের আকার: পৃষ্ঠার প্রস্থের ${signWidth}%` : `Signature width: ${signWidth}% of page`}
+                    </span>
+                    <input
+                      type="range"
+                      min={8}
+                      max={60}
+                      value={signWidth}
+                      onChange={(e) => setSignWidth(parseInt(e.target.value, 10))}
+                      className="w-full"
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    {language === 'bn'
+                      ? 'এটি ছবির মতো দৃশ্যমান সই, ক্রিপ্টোগ্রাফিক ডিজিটাল স্বাক্ষর নয়।'
+                      : 'This is a visible image signature, not a cryptographic digital signature.'}
+                  </p>
+                </div>
+              )}
+
+              {/* Reorder Options */}
+              {activeSubTab === 'reorder' && (
+                <div className="space-y-2">
+                  <label className="text-xs text-slate-300 font-medium block">
+                    {language === 'bn' ? 'নতুন পৃষ্ঠার ক্রম' : 'New page order'}
+                  </label>
+                  <input
+                    type="text"
+                    value={reorderInput}
+                    onChange={(e) => setReorderInput(e.target.value)}
+                    placeholder="e.g. 3, 1, 2"
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-mono focus:outline-hidden focus:border-teal-400"
+                  />
+                  <p className="text-[11px] text-slate-400">
+                    {language === 'bn'
+                      ? 'প্রতিটি পৃষ্ঠা ঠিক একবার লিখুন। যেমন ৩ পৃষ্ঠার ফাইলে "3, 1, 2"। উল্টো ক্রমের জন্য "5-1" লেখা যায়।'
+                      : 'List every page exactly once. For a 3-page file type "3, 1, 2". Use "5-1" for reverse order.'}
+                  </p>
+                </div>
+              )}
+
+              {/* Watermark Options */}
+              {activeSubTab === 'watermark' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs text-slate-300 font-medium block mb-1.5">
+                      {language === 'bn' ? 'ওয়াটারমার্ক লেখা (ইংরেজি)' : 'Watermark text'}
+                    </label>
+                    <input
+                      type="text"
+                      value={watermarkText}
+                      onChange={(e) => setWatermarkText(e.target.value)}
+                      className="w-full px-3.5 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs focus:outline-hidden focus:border-teal-400"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <span className="text-[10px] text-slate-400 block mb-1">
+                        {language === 'bn' ? 'স্বচ্ছতা %' : 'Opacity %'}
+                      </span>
+                      <input
+                        type="number"
+                        min={5}
+                        max={100}
+                        value={watermarkOpacity}
+                        onChange={(e) => setWatermarkOpacity(parseInt(e.target.value, 10) || 25)}
+                        className="w-full px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block mb-1">
+                        {language === 'bn' ? 'আকার' : 'Size'}
+                      </span>
+                      <input
+                        type="number"
+                        min={8}
+                        max={200}
+                        value={watermarkSize}
+                        onChange={(e) => setWatermarkSize(parseInt(e.target.value, 10) || 56)}
+                        className="w-full px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block mb-1">
+                        {language === 'bn' ? 'রং' : 'Colour'}
+                      </span>
+                      <input
+                        type="color"
+                        value={watermarkColor}
+                        onChange={(e) => setWatermarkColor(e.target.value)}
+                        className="w-full h-8 rounded-lg bg-slate-800 border border-slate-700"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Page Number Options */}
+              {activeSubTab === 'pageNumbers' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs text-slate-300 font-medium block mb-1.5">
+                      {language === 'bn' ? 'নম্বরের অবস্থান' : 'Position'}
+                    </label>
+                    <select
+                      value={pageNumberPosition}
+                      onChange={(e) => setPageNumberPosition(e.target.value as PageNumberPosition)}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs"
+                    >
+                      <option value="bottom-center">{language === 'bn' ? 'নিচে মাঝখানে' : 'Bottom centre'}</option>
+                      <option value="bottom-right">{language === 'bn' ? 'নিচে ডানে' : 'Bottom right'}</option>
+                      <option value="bottom-left">{language === 'bn' ? 'নিচে বামে' : 'Bottom left'}</option>
+                      <option value="top-center">{language === 'bn' ? 'উপরে মাঝখানে' : 'Top centre'}</option>
+                      <option value="top-right">{language === 'bn' ? 'উপরে ডানে' : 'Top right'}</option>
+                      <option value="top-left">{language === 'bn' ? 'উপরে বামে' : 'Top left'}</option>
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 items-end">
+                    <div>
+                      <span className="text-[10px] text-slate-400 block mb-1">
+                        {language === 'bn' ? 'শুরুর নম্বর' : 'Start at'}
+                      </span>
+                      <input
+                        type="number"
+                        value={pageNumberStart}
+                        onChange={(e) => setPageNumberStart(parseInt(e.target.value, 10) || 1)}
+                        className="w-full px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs"
+                      />
+                    </div>
+                    <label className="flex items-center gap-2 text-xs text-slate-300 pb-1.5">
+                      <input
+                        type="checkbox"
+                        checked={pageNumberShowTotal}
+                        onChange={(e) => setPageNumberShowTotal(e.target.checked)}
+                      />
+                      {language === 'bn' ? '"১ / ১০" ধরনে' : 'Show "1 / 10"'}
+                    </label>
+                  </div>
+                </div>
+              )}
+
               {/* Crop Controls */}
               {activeSubTab === 'crop' && (
                 <div className="space-y-3">
@@ -793,8 +1452,8 @@ export const PdfStudio: React.FC = () => {
                   />
                   <p className="text-[11px] text-slate-400">
                     {language === 'bn'
-                      ? 'পিডিএফটি ব্রাউজারের Web Crypto AES-GCM-256 অ্যালগরিদমে সম্পূর্ণভাবে এনক্রিপ্ট হবে।'
-                      : 'The document is encrypted with authenticated AES-GCM-256.'}
+                      ? 'ফাইলটি স্ট্যান্ডার্ড AES-256 পিডিএফ এনক্রিপশনে সুরক্ষিত হবে। Adobe, Chrome ও মোবাইলে পাসওয়ার্ড দিয়ে খোলা যাবে।'
+                      : 'Standard AES-256 PDF encryption. Opens with the password in Acrobat, Chrome and mobile PDF apps.'}
                   </p>
                 </div>
               )}
@@ -886,6 +1545,131 @@ export const PdfStudio: React.FC = () => {
                     />
                     <span>{language === 'bn' ? 'প্রিন্ট বা বিতরণের জন্য ফ্ল্যাটেন করুন (Flatten)' : 'Flatten form fields for printing'}</span>
                   </label>
+                </div>
+              )}
+
+              {/* PDF to JPG / Images Controls */}
+              {activeSubTab === 'pdfToImages' && (
+                <div className="space-y-4">
+                  {/* Format Choice: JPG vs PNG */}
+                  <div>
+                    <label className="text-xs text-slate-300 font-medium block mb-1.5">
+                      {language === 'bn' ? 'ছবির ফরম্যাট নির্বাচন' : 'Output Image Format'}
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPdfImageFormat('image/jpeg')}
+                        className={`py-2 px-3 rounded-xl text-xs font-semibold border transition-all ${
+                          pdfImageFormat === 'image/jpeg'
+                            ? 'bg-teal-500 text-slate-950 border-teal-400 font-bold shadow-xs'
+                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:border-slate-600'
+                        }`}
+                      >
+                        JPG (High Compression, Recommended)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPdfImageFormat('image/png')}
+                        className={`py-2 px-3 rounded-xl text-xs font-semibold border transition-all ${
+                          pdfImageFormat === 'image/png'
+                            ? 'bg-teal-500 text-slate-950 border-teal-400 font-bold shadow-xs'
+                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:border-slate-600'
+                        }`}
+                      >
+                        PNG (Crisp Lossless)
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Resolution & Scale */}
+                  <div>
+                    <div className="flex items-center justify-between text-xs text-slate-300 mb-1.5">
+                      <label className="font-medium">{language === 'bn' ? 'রেজোলিউশন ও স্পষ্টতা' : 'Resolution & Sharpness'}</label>
+                      <span className="text-teal-400 font-mono font-bold">
+                        {pdfImageScale === 1.5 ? 'Standard (1.5x, 108 DPI)' : pdfImageScale === 2.0 ? 'Crisp HD (2.0x, 144 DPI)' : 'Ultra HD (3.0x, 216 DPI)'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { scale: 1.5, label: 'Standard (1.5x)' },
+                        { scale: 2.0, label: 'Crisp HD (2.0x)' },
+                        { scale: 3.0, label: 'Ultra (3.0x)' },
+                      ].map((opt) => (
+                        <button
+                          key={opt.scale}
+                          type="button"
+                          onClick={() => setPdfImageScale(opt.scale)}
+                          className={`py-2 px-2 rounded-xl text-xs font-semibold border transition-all ${
+                            pdfImageScale === opt.scale
+                              ? 'bg-teal-500 text-slate-950 font-bold border-teal-400'
+                              : 'bg-slate-800 text-slate-300 border-slate-700 hover:border-slate-600'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* JPG Quality Slider */}
+                  {pdfImageFormat === 'image/jpeg' && (
+                    <div>
+                      <div className="flex items-center justify-between text-xs text-slate-300 mb-1">
+                        <span>{language === 'bn' ? 'জেপিজি কোয়ালিটি' : 'JPG Quality'}</span>
+                        <span className="text-teal-400 font-mono font-bold">{pdfImageQuality}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="70"
+                        max="100"
+                        value={pdfImageQuality}
+                        onChange={(e) => setPdfImageQuality(parseInt(e.target.value, 10))}
+                        className="w-full accent-teal-400 h-1.5 bg-slate-700 rounded-lg cursor-pointer"
+                      />
+                    </div>
+                  )}
+
+                  {/* Page Scope Selection */}
+                  <div>
+                    <label className="text-xs text-slate-300 font-medium block mb-1.5">
+                      {language === 'bn' ? 'পৃষ্ঠা নির্বাচন' : 'Pages to Convert'}
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPdfImagePageScope('all')}
+                        className={`py-2 px-3 rounded-xl text-xs font-semibold border transition-all ${
+                          pdfImagePageScope === 'all'
+                            ? 'bg-teal-500 text-slate-950 font-bold border-teal-400'
+                            : 'bg-slate-800 text-slate-300 border-slate-700'
+                        }`}
+                      >
+                        {language === 'bn' ? 'সব পৃষ্ঠা (All Pages)' : 'All Pages'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPdfImagePageScope('custom')}
+                        className={`py-2 px-3 rounded-xl text-xs font-semibold border transition-all ${
+                          pdfImagePageScope === 'custom'
+                            ? 'bg-teal-500 text-slate-950 font-bold border-teal-400'
+                            : 'bg-slate-800 text-slate-300 border-slate-700'
+                        }`}
+                      >
+                        {language === 'bn' ? 'নির্দিষ্ট পৃষ্ঠা' : 'Custom Page Range'}
+                      </button>
+                    </div>
+
+                    {pdfImagePageScope === 'custom' && (
+                      <input
+                        type="text"
+                        value={pdfImagePageRangeInput}
+                        onChange={(e) => setPdfImagePageRangeInput(e.target.value)}
+                        placeholder="e.g. 1-3, 5, 8"
+                        className="mt-2 w-full px-3.5 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-mono focus:outline-hidden focus:border-teal-400"
+                      />
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -1021,6 +1805,9 @@ export const PdfStudio: React.FC = () => {
           {/* Results Card */}
           {lastResult && (
             <div className="p-5 rounded-2xl border border-teal-500/30 bg-teal-950/20 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+              {activeSubTab === 'extractImages' && extractNote && (
+                <p className="text-xs text-teal-200">{extractNote}</p>
+              )}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="w-5 h-5 text-teal-400" />
@@ -1031,8 +1818,9 @@ export const PdfStudio: React.FC = () => {
                   </h3>
                 </div>
                 <span className="text-xs font-mono text-teal-400">
-                  {lastResult.pageCount}{' '}
-                  {language === 'bn' ? 'পৃষ্ঠা' : 'pages'}
+                  {activeSubTab === 'extractImages'
+                    ? `${lastResult.pageCount} ${language === 'bn' ? 'ছবি' : 'images'}`
+                    : `${lastResult.pageCount} ${language === 'bn' ? 'পৃষ্ঠা' : 'pages'}`}
                 </span>
               </div>
 
@@ -1095,6 +1883,61 @@ export const PdfStudio: React.FC = () => {
                 <span>{t.common.download} ({lastResult.filename})</span>
               </button>
 
+              {/* Gallery of converted pages for PDF to JPG / Images */}
+              {activeSubTab === 'pdfToImages' && pdfConvertedPages.length > 0 && (
+                <div className="space-y-3 pt-3 border-t border-slate-800">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <ImageIcon className="w-4 h-4 text-teal-400" />
+                      <span>{language === 'bn' ? `রূপান্তরিত ছবির গ্যালারি (${pdfConvertedPages.length}টি পেজ)` : `Converted Image Gallery (${pdfConvertedPages.length} pages)`}</span>
+                    </span>
+                    <span className="text-[11px] text-slate-400 font-mono">
+                      {language === 'bn' ? 'ক্লিক করে প্রিভিউ দেখুন' : 'Click to preview'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-80 overflow-y-auto pr-1">
+                    {pdfConvertedPages.map((page) => (
+                      <div
+                        key={page.pageNumber}
+                        className="group relative rounded-xl border border-slate-800 bg-slate-900/90 overflow-hidden flex flex-col justify-between"
+                      >
+                        <div
+                          className="relative aspect-3/4 bg-slate-950 flex items-center justify-center cursor-pointer overflow-hidden"
+                          onClick={() => setPdfPreviewModalUrl(page.url)}
+                        >
+                          <img
+                            src={page.url}
+                            alt={`Page ${page.pageNumber}`}
+                            className="w-full h-full object-contain group-hover:scale-105 transition-transform"
+                          />
+                          <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-md bg-black/75 text-[10px] font-bold font-mono text-teal-300">
+                            P.{page.pageNumber}
+                          </span>
+                          <span className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-xs gap-1 font-bold">
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Preview</span>
+                          </span>
+                        </div>
+                        <div className="p-2 flex items-center justify-between bg-slate-800/80 border-t border-slate-800">
+                          <span className="text-[10px] text-slate-400 font-mono truncate">
+                            {formatFileSize(page.fileSize)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => downloadFileOnce(page.blob, page.filename)}
+                            title={`Download ${page.filename}`}
+                            className="p-1 rounded-md bg-teal-500/20 hover:bg-teal-500 text-teal-300 hover:text-slate-950 transition-colors"
+                          >
+                            <Download className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
             </div>
           )}
 
@@ -1120,6 +1963,8 @@ export const PdfStudio: React.FC = () => {
                 ? '/pdf-studio/compress'
                 : activeSubTab === 'rotate'
                 ? '/pdf-studio/organize'
+                : activeSubTab === 'pdfToImages'
+                ? '/pdf-studio/pdf-to-jpg'
                 : '/pdf-studio/convert'
             }
           />
@@ -1128,6 +1973,31 @@ export const PdfStudio: React.FC = () => {
           <AdSlot placement="tool-result-bottom" />
         </div>
       </div>
+
+      {/* Lightbox Preview Modal */}
+      {pdfPreviewModalUrl && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setPdfPreviewModalUrl(null)}
+        >
+          <div
+            className="relative max-w-4xl max-h-[90vh] bg-slate-900 rounded-2xl border border-slate-700 p-2 overflow-hidden shadow-2xl flex flex-col items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setPdfPreviewModalUrl(null)}
+              className="absolute top-3 right-3 p-1.5 rounded-full bg-slate-800 text-slate-300 hover:text-white hover:bg-rose-600 transition-colors z-10"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <img
+              src={pdfPreviewModalUrl}
+              alt="Page Preview"
+              className="max-h-[82vh] w-auto object-contain rounded-lg shadow-inner"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

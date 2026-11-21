@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { convertImage } from '../../services/imageService';
-import { imagesToPdf } from '../../services/pdfService';
+import { imagesToPdf, convertPdfToImages, type PdfPageImage } from '../../services/pdfService';
 import {
   convertDocxToPdf,
   convertPdfToDocx,
   convertXlsxToPdf,
   convertPdfToXlsx,
+  convertPdfToPptx,
   convertPptxToPdf,
 } from '../../services/conversionService';
 import { formatFileSize, generateSafeOutputFilename } from '../../utils/fileDetection';
@@ -27,6 +28,8 @@ import {
   Check,
   FileSpreadsheet,
   Presentation,
+  Eye,
+  X,
 } from 'lucide-react';
 
 export const ConvertStudio: React.FC = () => {
@@ -57,6 +60,12 @@ export const ConvertStudio: React.FC = () => {
   // Normalization options for TXT
   const [normalizeWhitespace, setNormalizeWhitespace] = useState(true);
   const [normalizeLinebreaks, setNormalizeLinebreaks] = useState(true);
+
+  // PDF to Image options
+  const [convertedPages, setConvertedPages] = useState<PdfPageImage[]>([]);
+  const [pdfScale, setPdfScale] = useState<number>(2.0);
+  const [pdfQuality, setPdfQuality] = useState<number>(92);
+  const [previewModalImage, setPreviewModalImage] = useState<string | null>(null);
 
   const officeTools = [
     {
@@ -92,6 +101,14 @@ export const ConvertStudio: React.FC = () => {
       icon: FileSpreadsheet,
     },
     {
+      id: 'pdf_to_pptx',
+      name: 'PDF → PowerPoint (PPTX)',
+      inputType: 'pdf',
+      accept: '.pdf',
+      desc: language === 'bn' ? 'প্রতিটি পৃষ্ঠা একটি স্লাইড (ছবি আকারে, লেখা এডিট করা যাবে না)' : 'One slide per PDF page as a picture (text is not editable)',
+      icon: Presentation,
+    },
+    {
       id: 'pptx_to_pdf',
       name: 'PPTX → PDF',
       inputType: 'pptx',
@@ -102,6 +119,8 @@ export const ConvertStudio: React.FC = () => {
   ];
 
   const imageTools = [
+    { id: 'pdf_to_jpg', name: 'PDF → JPG', inputType: 'pdf', targetFormat: 'image/jpeg', accept: '.pdf' },
+    { id: 'pdf_to_png', name: 'PDF → PNG', inputType: 'pdf', targetFormat: 'image/png', accept: '.pdf' },
     { id: 'jpg_to_png', name: 'JPEG → PNG', inputType: 'image', targetFormat: 'image/png', accept: '.jpg,.jpeg' },
     { id: 'jpg_to_webp', name: 'JPEG → WebP', inputType: 'image', targetFormat: 'image/webp', accept: '.jpg,.jpeg' },
     { id: 'png_to_jpg', name: 'PNG → JPEG', inputType: 'image', targetFormat: 'image/jpeg', accept: '.png' },
@@ -120,7 +139,11 @@ export const ConvertStudio: React.FC = () => {
       setSelectedFile(file);
       // Auto select matching tool
       if (file.name.endsWith('.docx')) setActiveConversion('docx_to_pdf');
-      else if (file.name.endsWith('.pdf')) setActiveConversion('pdf_to_docx');
+      else if (file.name.endsWith('.pdf')) {
+        if (activeConversion !== 'pdf_to_jpg' && activeConversion !== 'pdf_to_png' && activeConversion !== 'pdf_to_xlsx' && activeConversion !== 'pdf_to_pptx') {
+          setActiveConversion('pdf_to_jpg');
+        }
+      }
       else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) setActiveConversion('xlsx_to_pdf');
       else if (file.name.endsWith('.pptx') || file.name.endsWith('.ppt')) setActiveConversion('pptx_to_pdf');
       else if (file.type.startsWith('image/')) setActiveConversion('images_to_pdf');
@@ -175,6 +198,11 @@ export const ConvertStudio: React.FC = () => {
         outBlob = res.blob;
         outName = res.outputFilename;
         desc = res.formatDescription;
+      } else if (activeConversion === 'pdf_to_pptx') {
+        const res = await convertPdfToPptx(selectedFile);
+        outBlob = res.blob;
+        outName = res.outputFilename;
+        desc = res.formatDescription;
       } else if (activeConversion === 'pptx_to_pdf') {
         const res = await convertPptxToPdf(selectedFile);
         outBlob = res.blob;
@@ -199,6 +227,18 @@ export const ConvertStudio: React.FC = () => {
         outBlob = res.blob;
         outName = generateSafeOutputFilename(selectedFile.name, 'document', 'pdf');
         desc = 'Images to PDF Document';
+      } else if (activeConversion === 'pdf_to_jpg' || activeConversion === 'pdf_to_png') {
+        const isJpg = activeConversion === 'pdf_to_jpg';
+        const targetFmt = isJpg ? 'image/jpeg' : 'image/png';
+        const res = await convertPdfToImages(selectedFile, {
+          format: targetFmt,
+          quality: pdfQuality / 100,
+          scale: pdfScale,
+        });
+        setConvertedPages(res.images);
+        outBlob = res.zipBlob || res.images[0].blob;
+        outName = res.zipFilename || res.images[0].filename;
+        desc = `PDF to ${isJpg ? 'JPG' : 'PNG'} (${res.selectedPageCount} ${res.selectedPageCount > 1 ? 'pages' : 'page'})`;
       } else {
         const targetFormat = (activeConfig as any)?.targetFormat as 'image/jpeg' | 'image/png' | 'image/webp';
         const res = await convertImage(selectedFile, targetFormat || 'image/png', 0.92);
@@ -444,6 +484,55 @@ export const ConvertStudio: React.FC = () => {
               </div>
             )}
 
+            {/* Options for PDF to JPG / PNG */}
+            {(activeConversion === 'pdf_to_jpg' || activeConversion === 'pdf_to_png') && selectedFile && (
+              <div className="space-y-3 pt-3 border-t border-slate-800">
+                <div>
+                  <div className="flex items-center justify-between text-xs text-slate-300 mb-1.5">
+                    <span className="font-semibold">{language === 'bn' ? 'রেজোলিউশন ও স্পষ্টতা' : 'Resolution & Sharpness'}</span>
+                    <span className="text-teal-400 font-mono font-bold">{pdfScale === 1.5 ? 'Standard (1.5x)' : pdfScale === 2.0 ? 'Crisp HD (2.0x)' : 'Ultra (3.0x)'}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { scale: 1.5, label: 'Standard (1.5x)' },
+                      { scale: 2.0, label: 'Crisp HD (2.0x)' },
+                      { scale: 3.0, label: 'Ultra (3.0x)' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.scale}
+                        type="button"
+                        onClick={() => setPdfScale(opt.scale)}
+                        className={`py-1.5 px-2 rounded-lg text-[11px] font-semibold border transition-all ${
+                          pdfScale === opt.scale
+                            ? 'bg-teal-500 text-slate-950 font-bold border-teal-400'
+                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:border-slate-600'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {activeConversion === 'pdf_to_jpg' && (
+                  <div>
+                    <div className="flex items-center justify-between text-xs text-slate-300 mb-1">
+                      <span>{language === 'bn' ? 'জেপিজি কোয়ালিটি' : 'JPG Quality'}</span>
+                      <span className="text-teal-400 font-mono font-bold">{pdfQuality}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="70"
+                      max="100"
+                      value={pdfQuality}
+                      onChange={(e) => setPdfQuality(parseInt(e.target.value, 10))}
+                      className="w-full accent-teal-400 h-1.5 bg-slate-700 rounded-lg cursor-pointer"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
             {errorMsg && (
               <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300 flex items-start gap-2">
                 <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
@@ -522,6 +611,60 @@ export const ConvertStudio: React.FC = () => {
                 <span>{t.common.download} ({result.filename})</span>
               </button>
 
+              {/* Gallery of converted pages for PDF to JPG / PNG */}
+              {convertedPages.length > 0 && (
+                <div className="space-y-3 pt-3 border-t border-slate-800">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <ImageIcon className="w-4 h-4 text-teal-400" />
+                      <span>{language === 'bn' ? `রূপান্তরিত পেজসমূহ (${convertedPages.length}টি)` : `Converted Pages (${convertedPages.length})`}</span>
+                    </span>
+                    <span className="text-[11px] text-slate-400 font-mono">
+                      {language === 'bn' ? 'ক্লিক করে বড় দেখুন' : 'Click to preview'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-80 overflow-y-auto pr-1">
+                    {convertedPages.map((page) => (
+                      <div
+                        key={page.pageNumber}
+                        className="group relative rounded-xl border border-slate-800 bg-slate-900/90 overflow-hidden flex flex-col justify-between"
+                      >
+                        <div
+                          className="relative aspect-3/4 bg-slate-950 flex items-center justify-center cursor-pointer overflow-hidden"
+                          onClick={() => setPreviewModalImage(page.url)}
+                        >
+                          <img
+                            src={page.url}
+                            alt={`Page ${page.pageNumber}`}
+                            className="w-full h-full object-contain group-hover:scale-105 transition-transform"
+                          />
+                          <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-md bg-black/75 text-[10px] font-bold font-mono text-teal-300">
+                            P.{page.pageNumber}
+                          </span>
+                          <span className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-xs gap-1 font-bold">
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Preview</span>
+                          </span>
+                        </div>
+                        <div className="p-2 flex items-center justify-between bg-slate-800/80 border-t border-slate-800">
+                          <span className="text-[10px] text-slate-400 font-mono truncate">
+                            {formatFileSize(page.fileSize)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => downloadFileOnce(page.blob, page.filename)}
+                            title={`Download ${page.filename}`}
+                            className="p-1 rounded-md bg-teal-500/20 hover:bg-teal-500 text-teal-300 hover:text-slate-950 transition-colors"
+                          >
+                            <Download className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="p-5 rounded-2xl border border-slate-800 bg-slate-900/40 text-xs text-slate-400 space-y-2">
@@ -538,6 +681,31 @@ export const ConvertStudio: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Full Preview Modal Lightbox */}
+      {previewModalImage && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setPreviewModalImage(null)}
+        >
+          <div
+            className="relative max-w-4xl max-h-[90vh] bg-slate-900 rounded-2xl border border-slate-700 p-2 overflow-hidden shadow-2xl flex flex-col items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setPreviewModalImage(null)}
+              className="absolute top-3 right-3 p-1.5 rounded-full bg-slate-800 text-slate-300 hover:text-white hover:bg-rose-600 transition-colors z-10"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <img
+              src={previewModalImage}
+              alt="Full Page Preview"
+              className="max-h-[82vh] w-auto object-contain rounded-lg shadow-inner"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { SmartTaskBox } from '../smarttask/SmartTaskBox';
 import { Logo } from '../common/Logo';
-import { MaishaaHeroStudents } from '../common/MaishaaHeroStudents';
+import { HomeBanner } from '../common/HomeBanner';
 import { AdSlot } from '../common/AdSlot';
 import { ToolSeoGuide } from '../common/ToolSeoGuide';
 import {
@@ -30,7 +30,6 @@ import {
   Check,
   Plus,
   Send,
-  MoreVertical,
   Laptop,
   Crown,
   Zap,
@@ -51,6 +50,7 @@ export const UniversalWorkspace: React.FC = () => {
     showNotification,
     setIsAiDrawerOpen,
     setIsHistoryModalOpen,
+    history,
   } = useWorkspace();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -123,8 +123,8 @@ export const UniversalWorkspace: React.FC = () => {
       module: 'pdf' as ToolCategory,
       titleEn: 'PDF Studio',
       titleBn: 'পিডিএফ স্টুডিও',
-      descEn: 'Edit, compress, merge, split, convert, OCR, sign, protect and more',
-      descBn: 'মার্জ, স্প্লিট, সাইজ কমানো, রোটেট, ওয়াটারমার্ক ও সিকিউরিটি পাসওয়ার্ড।',
+      descEn: 'Merge, split, compress, reorder, sign, redact, compare, watermark and password-protect PDFs',
+      descBn: 'মার্জ, স্প্লিট, কমপ্রেস, পৃষ্ঠা সাজানো, সই, তথ্য লুকানো, তুলনা, ওয়াটারমার্ক ও পাসওয়ার্ড সুরক্ষা।',
       icon: FileText,
       colorGrad: 'from-rose-600 to-red-500',
       shadowColor: 'rgba(239, 68, 68, 0.35)',
@@ -134,8 +134,8 @@ export const UniversalWorkspace: React.FC = () => {
       module: 'image' as ToolCategory,
       titleEn: 'Image Studio',
       titleBn: 'ছবি স্টুডিও',
-      descEn: 'Edit, resize, compress, background remove, advanced editor',
-      descBn: 'ফটো কালার রিটাচ, এআই প্রম্পট জেনারেটর, ব্যাকগ্রাউন্ড অপসারণ ও সুপার-রেজোলিউশন।',
+      descEn: 'Edit, resize, compress, retouch, watermark and caption photos with undo/redo',
+      descBn: 'ছবি এডিট, রিসাইজ, কমপ্রেস, রিটাচ, ওয়াটারমার্ক ও ক্যাপশন — আনডু/রিডু সহ।',
       icon: ImageIcon,
       colorGrad: 'from-blue-600 to-sky-500',
       shadowColor: 'rgba(59, 130, 246, 0.35)',
@@ -156,7 +156,7 @@ export const UniversalWorkspace: React.FC = () => {
       module: 'doc_intel' as ToolCategory,
       titleEn: 'Document Studio',
       titleBn: 'ডকুমেন্ট ইন্টেলিজেন্স',
-      descEn: 'Create, edit and convert Word (DOCX) files online',
+      descEn: 'Read Word (DOCX) files, see their structure, copy the text and export it as TXT or DOCX',
       descBn: 'ওয়ার্ড (DOCX) ফাইলের অভ্যন্তরীণ গঠন, অনুচ্ছেদ বিশ্লেষণ ও ফরম্যাটেড টেক্সট রিডার।',
       icon: FileCode,
       colorGrad: 'from-blue-700 to-indigo-600',
@@ -167,7 +167,7 @@ export const UniversalWorkspace: React.FC = () => {
       module: 'sheet_intel' as ToolCategory,
       titleEn: 'Spreadsheet Studio',
       titleBn: 'স্প্রেডশিট ডেটা',
-      descEn: 'Edit Excel (XLSX), create sheets, charts and analyze data',
+      descEn: 'Preview Excel and CSV data, clean duplicate rows and see column statistics',
       descBn: 'এক্সেল ও সিএসভি ডেটা প্রিভিউ, ডুপ্লিকেট সারি ক্লিন ও কলাম পরিসংখ্যান।',
       icon: Table,
       colorGrad: 'from-emerald-600 to-green-500',
@@ -178,7 +178,7 @@ export const UniversalWorkspace: React.FC = () => {
       module: 'slides_intel' as ToolCategory,
       titleEn: 'Presentation Studio',
       titleBn: 'স্লাইড প্রেজেন্টেশন',
-      descEn: 'Create and edit PPTX, use templates and design slides',
+      descEn: 'Build slide decks, edit titles and bullet points, and export PPTX',
       descBn: 'পাওয়ারপয়েন্ট স্লাইড ডেক তৈরি, টাইটেল ও বুলেট পয়েন্ট এডিটিং এবং PPTX এক্সপোর্ট।',
       icon: Presentation,
       colorGrad: 'from-orange-600 to-amber-500',
@@ -222,8 +222,8 @@ export const UniversalWorkspace: React.FC = () => {
       module: 'convert' as ToolCategory,
       titleEn: 'Convert Studio',
       titleBn: 'কনভার্ট স্টুডিও',
-      descEn: 'PDF ↔ Word, Excel, PPT, Image and many formats',
-      descBn: 'DOCX ↔ PDF, XLSX ↔ PDF, PPTX ↔ PDF এবং ইমেজ ফরম্যাট রূপান্তর।',
+      descEn: 'Convert between PDF and Word, Excel, PowerPoint and images',
+      descBn: 'DOCX, XLSX, PPTX ↔ PDF (PDF থেকে PowerPoint সহ) এবং ইমেজ ফরম্যাট রূপান্তর।',
       icon: ArrowRightLeft,
       colorGrad: 'from-pink-600 to-rose-500',
       shadowColor: 'rgba(236, 72, 153, 0.35)',
@@ -233,7 +233,7 @@ export const UniversalWorkspace: React.FC = () => {
       module: 'ocr' as ToolCategory,
       titleEn: 'Scan & OCR',
       titleBn: 'স্ক্যান ও ওসিআর',
-      descEn: 'Scan, clean, OCR and make searchable PDFs',
+      descEn: 'Extract Bengali and English text from photos and scans and create searchable PDFs',
       descBn: 'ছবি বা স্ক্যানড পেজ থেকে বাংলা ও ইংরেজি টেক্সট উদ্ধার ও সার্চেবল পিডিএফ তৈরি।',
       icon: FileSearch,
       colorGrad: 'from-teal-600 to-cyan-500',
@@ -244,7 +244,7 @@ export const UniversalWorkspace: React.FC = () => {
       module: 'batch' as ToolCategory,
       titleEn: 'Batch Processing',
       titleBn: 'ব্যাচ প্রসেসিং',
-      descEn: 'Process 100+ files at once (resize, compress, convert, rename, etc.)',
+      descEn: 'Resize, convert and bundle many files at once into a safe ZIP',
       descBn: 'একসঙ্গে একাধিক ফাইল রিসাইজ, ফরম্যাট কনভার্ট ও নিরাপদ জিপ বান্ডল তৈরি।',
       icon: Layers,
       colorGrad: 'from-indigo-600 to-purple-600',
@@ -255,7 +255,7 @@ export const UniversalWorkspace: React.FC = () => {
       module: 'ai_command' as ToolCategory,
       titleEn: 'AI Assistant',
       titleBn: 'মায়িশা অ্যাসিস্ট্যান্ট',
-      descEn: 'Ask MAISHAA to summarize, convert, edit, format or create content',
+      descEn: 'Summarize, translate and plan documents with the MAISHAA AI assistant',
       descBn: 'স্মার্ট ডকুমেন্ট প্ল্যানার, সামারি, অনুবাদ ও ইন্টেলিজেন্ট ওয়ার্কফ্লো অ্যাসিস্ট্যান্ট।',
       icon: Sparkles,
       colorGrad: 'from-amber-500 to-yellow-400',
@@ -263,49 +263,48 @@ export const UniversalWorkspace: React.FC = () => {
     },
   ];
 
-  // Recent files list matching reference mockup
-  const recentFiles = [
-    {
-      name: 'Application_Form.pdf',
-      format: 'PDF',
-      size: '2.4 MB',
-      date: 'Today 10:45 AM',
-      iconColor: 'from-rose-500 to-red-600',
-      module: 'pdf' as ToolCategory,
-    },
-    {
-      name: 'Passport_Photo.jpg',
-      format: 'Image',
-      size: '450 KB',
-      date: 'Today 10:30 AM',
-      iconColor: 'from-blue-500 to-sky-600',
-      module: 'image' as ToolCategory,
-    },
-    {
-      name: 'Exam_Result.docx',
-      format: 'DOCX',
-      size: '1.2 MB',
-      date: 'Yesterday 8:20 PM',
-      iconColor: 'from-blue-600 to-indigo-600',
-      module: 'doc_intel' as ToolCategory,
-    },
-    {
-      name: 'Budget_Sheet.xlsx',
-      format: 'XLSX',
-      size: '980 KB',
-      date: '12 Sep 2026',
-      iconColor: 'from-emerald-500 to-green-600',
-      module: 'sheet_intel' as ToolCategory,
-    },
-    {
-      name: 'Project_Presentation.pptx',
-      format: 'PPTX',
-      size: '4.1 MB',
-      date: '10 Sep 2026',
-      iconColor: 'from-orange-500 to-amber-600',
-      module: 'slides_intel' as ToolCategory,
-    },
+  // Category + "new" badge for each tool card (used by the All Tools filter bar)
+  type ToolFilter = 'all' | 'pdf' | 'image' | 'office' | 'design' | 'smart';
+  const toolMeta: Record<string, { category: Exclude<ToolFilter, 'all'>; isNew?: boolean }> = {
+    pdf: { category: 'pdf', isNew: true },
+    image: { category: 'image', isNew: true },
+    bg_remover: { category: 'image' },
+    doc_intel: { category: 'office' },
+    sheet_intel: { category: 'office' },
+    slides_intel: { category: 'office' },
+    creative: { category: 'design' },
+    whiteboard: { category: 'design' },
+    forms: { category: 'office' },
+    convert: { category: 'pdf', isNew: true },
+    ocr: { category: 'smart' },
+    batch: { category: 'smart' },
+    ai_command: { category: 'smart' },
+  };
+  const toolFilters: { id: ToolFilter; en: string; bn: string }[] = [
+    { id: 'all', en: 'All', bn: 'সব' },
+    { id: 'pdf', en: 'PDF & Convert', bn: 'পিডিএফ ও কনভার্ট' },
+    { id: 'image', en: 'Images', bn: 'ছবি' },
+    { id: 'office', en: 'Documents', bn: 'ডকুমেন্ট' },
+    { id: 'design', en: 'Design', bn: 'ডিজাইন' },
+    { id: 'smart', en: 'Smart tools', bn: 'স্মার্ট টুল' },
   ];
+  const [toolQuery, setToolQuery] = useState('');
+  const [toolFilter, setToolFilter] = useState<ToolFilter>('all');
+  const visibleTools = allTools.filter((card) => {
+    const meta = toolMeta[card.id];
+    if (toolFilter !== 'all' && meta?.category !== toolFilter) return false;
+    const q = toolQuery.trim().toLowerCase();
+    if (!q) return true;
+    return [card.titleEn, card.titleBn, card.descEn, card.descBn]
+      .join(' ')
+      .toLowerCase()
+      .includes(q);
+  });
+
+  // Recent files: real items processed in this browser session (from the workspace history)
+  const recentFiles = history
+    .filter((h) => h.status === 'COMPLETED')
+    .slice(0, 4);
 
   // Popular templates previews matching reference mockup
   const popularTemplates = [
@@ -330,8 +329,11 @@ export const UniversalWorkspace: React.FC = () => {
     <div className="flex-1 overflow-y-auto bg-[#eef2f7] text-[#0f172a] p-4 sm:p-6 lg:p-7 space-y-6 min-h-full font-sans">
       {/* 1. Hero Showcase Banner Card (Exact Reference Look) */}
       <div className="bg-white rounded-3xl p-5 sm:p-7 border border-slate-200/90 shadow-[0_4px_24px_-4px_rgba(15,23,42,0.06)] relative overflow-hidden">
-        {/* Top Showcase Banner */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pb-6 border-b border-slate-100">
+        {/* Welcome banner (tablet / desktop) */}
+        <HomeBanner className="hidden md:block pb-6 mb-6 border-b border-slate-100" />
+
+        {/* Top Showcase Banner (phones only: compact logo + title) */}
+        <div className="flex md:hidden flex-col lg:flex-row lg:items-center justify-between gap-6 pb-6 border-b border-slate-100">
           {/* Left: Official Circular Emblem + Typography + 4 Pills */}
           <div className="flex items-start sm:items-center gap-5 sm:gap-6 max-w-2xl">
             <div className="relative shrink-0">
@@ -375,11 +377,6 @@ export const UniversalWorkspace: React.FC = () => {
               </div>
             </div>
           </div>
-
-          {/* Right: Maishaa & Medhaat Students Illustration */}
-          <div className="hidden lg:flex justify-end items-center shrink-0">
-            <MaishaaHeroStudents className="w-[360px] md:w-[420px] lg:w-[460px] xl:w-[500px]" />
-          </div>
         </div>
 
         {/* Bottom Upload & Quick Create Section */}
@@ -417,7 +414,7 @@ export const UniversalWorkspace: React.FC = () => {
                   <span className="text-[#2563eb] font-bold hover:underline">or click to browse</span>
                 </h4>
                 <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 whitespace-normal">
-                  Supports PDF, Word, Excel, PowerPoint, Images and more (Max 500 MB)
+                  Supports PDF, Word, Excel, PowerPoint, Images and more (Max 150 MB)
                 </p>
               </div>
             </div>
@@ -542,52 +539,103 @@ export const UniversalWorkspace: React.FC = () => {
           <h2 className="text-lg font-extrabold text-[#0f172a]">
             {language === 'bn' ? 'সকল টুল' : 'All Tools'}
           </h2>
-          <button
-            onClick={() => setActiveModule('batch')}
-            className="text-xs font-bold text-[#2563eb] hover:underline flex items-center gap-1"
-          >
-            <span>{language === 'bn' ? 'সকল টুল দেখুন' : 'View All Tools'}</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
+          <span className="text-xs font-semibold text-slate-600">
+            {language === 'bn' ? `${visibleTools.length}টি টুল` : `${visibleTools.length} tools`}
+          </span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
-          {allTools.map((card) => {
-            const Icon = card.icon;
-            return (
-              <div
-                key={card.id}
-                onClick={() => setActiveModule(card.module)}
-                className="bg-white rounded-2xl p-4 border border-slate-200/90 shadow-[0_4px_14px_-2px_rgba(15,23,42,0.05)] hover:shadow-[0_12px_24px_-4px_rgba(15,23,42,0.1)] hover:-translate-y-1 transition-all duration-200 cursor-pointer flex flex-col justify-between group"
+        {/* Search + category filter */}
+        <div className="flex flex-col md:flex-row md:items-center gap-2.5">
+          <div className="relative md:w-72 shrink-0">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="search"
+              value={toolQuery}
+              onChange={(e) => setToolQuery(e.target.value)}
+              placeholder={language === 'bn' ? 'টুল খুঁজুন (যেমন: ওয়াটারমার্ক)' : 'Search tools (e.g. watermark)'}
+              aria-label={language === 'bn' ? 'টুল খুঁজুন' : 'Search tools'}
+              className="w-full pl-9 pr-3 py-2 rounded-xl bg-white border border-slate-300 text-xs text-slate-900 placeholder:text-slate-500 focus:outline-hidden focus:border-[#2563eb] focus:ring-2 focus:ring-blue-200"
+            />
+          </div>
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5" role="tablist" aria-label={language === 'bn' ? 'টুল ক্যাটাগরি' : 'Tool categories'}>
+            {toolFilters.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                role="tab"
+                aria-selected={toolFilter === f.id}
+                onClick={() => setToolFilter(f.id)}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap border transition-colors ${
+                  toolFilter === f.id
+                    ? 'bg-[#2563eb] text-white border-[#2563eb]'
+                    : 'bg-white text-slate-700 border-slate-300 hover:border-[#2563eb] hover:text-[#2563eb]'
+                }`}
               >
-                <div className="space-y-3">
-                  {/* High-Gloss 3D Squircle Icon Container */}
-                  <div
-                    className={`w-11 h-11 rounded-xl bg-gradient-to-tr ${card.colorGrad} flex items-center justify-center shrink-0 transition-transform duration-200 group-hover:scale-105`}
-                    style={{
-                      boxShadow: `0 6px 14px -2px ${card.shadowColor}, inset 0 1px 1px rgba(255,255,255,0.6), inset 0 -1px 2px rgba(0,0,0,0.15)`,
-                    }}
-                  >
-                    <Icon className="w-5 h-5 text-white" />
-                  </div>
-
-                  <div>
-                    <h3 className="font-extrabold text-sm text-[#0f172a] group-hover:text-[#2563eb] transition-colors leading-tight">
-                      {language === 'bn' ? card.titleBn : card.titleEn}
-                    </h3>
-                    <p className="text-[11px] text-slate-500 mt-1 line-clamp-2 leading-relaxed">
-                      {language === 'bn' ? card.descBn : card.descEn}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-3 pt-2 flex items-center justify-end text-slate-300 group-hover:text-[#2563eb] transition-colors">
-                  <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-                </div>
-              </div>
-            );
-          })}
+                {language === 'bn' ? f.bn : f.en}
+              </button>
+            ))}
+          </div>
         </div>
+
+        {visibleTools.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-600">
+            {language === 'bn' ? 'এই নামে কোনো টুল পাওয়া যায়নি।' : 'No tools match your search.'}{' '}
+            <button
+              type="button"
+              onClick={() => {
+                setToolQuery('');
+                setToolFilter('all');
+              }}
+              className="font-bold text-[#2563eb] hover:underline"
+            >
+              {language === 'bn' ? 'ফিল্টার মুছুন' : 'Clear filters'}
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-3.5 auto-rows-fr">
+            {visibleTools.map((card) => {
+              const Icon = card.icon;
+              const meta = toolMeta[card.id];
+              return (
+                <button
+                  type="button"
+                  key={card.id}
+                  onClick={() => setActiveModule(card.module)}
+                  className="relative h-full min-h-[168px] text-left bg-white rounded-2xl p-4 border border-slate-200 shadow-[0_4px_14px_-2px_rgba(15,23,42,0.05)] hover:shadow-[0_12px_24px_-4px_rgba(15,23,42,0.12)] hover:border-blue-300 hover:-translate-y-1 focus-visible:outline-2 focus-visible:outline-[#2563eb] transition-all duration-200 cursor-pointer flex flex-col justify-between group"
+                >
+                  {meta?.isNew && (
+                    <span className="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold uppercase tracking-wide">
+                      {language === 'bn' ? 'নতুন' : 'New'}
+                    </span>
+                  )}
+                  <div className="space-y-3">
+                    <div
+                      className={`w-11 h-11 rounded-xl bg-gradient-to-tr ${card.colorGrad} flex items-center justify-center shrink-0 transition-transform duration-200 group-hover:scale-105`}
+                      style={{
+                        boxShadow: `0 6px 14px -2px ${card.shadowColor}, inset 0 1px 1px rgba(255,255,255,0.6), inset 0 -1px 2px rgba(0,0,0,0.15)`,
+                      }}
+                    >
+                      <Icon className="w-5 h-5 text-white" />
+                    </div>
+
+                    <div>
+                      <h3 className="font-extrabold text-sm text-[#0f172a] group-hover:text-[#2563eb] transition-colors leading-tight">
+                        {language === 'bn' ? card.titleBn : card.titleEn}
+                      </h3>
+                      <p className="text-xs text-slate-600 mt-1 line-clamp-3 leading-relaxed">
+                        {language === 'bn' ? card.descBn : card.descEn}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 pt-2 flex items-center justify-end text-slate-400 group-hover:text-[#2563eb] transition-colors">
+                    <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* 1. Homepage Ad Slot: After All Tools */}
@@ -600,7 +648,7 @@ export const UniversalWorkspace: React.FC = () => {
           <div className="space-y-3">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <h3 className="font-extrabold text-sm text-[#0f172a] flex items-center gap-2">
-                <span>Recent Files</span>
+                <span>{language === 'bn' ? 'সাম্প্রতিক ফাইল' : 'Recent Files'}</span>
               </h3>
               <button
                 onClick={() => setIsHistoryModalOpen(true)}
@@ -612,36 +660,32 @@ export const UniversalWorkspace: React.FC = () => {
             </div>
 
             <div className="space-y-2">
-              {recentFiles.map((file, idx) => (
+              {recentFiles.length === 0 && (
+                <p className="text-xs text-slate-400 py-6 text-center leading-relaxed">
+                  {language === 'bn'
+                    ? 'এই সেশনে এখনো কোনো ফাইল প্রসেস করা হয়নি। কোনো টুল চালালে এখানে দেখা যাবে।'
+                    : 'No files processed in this session yet. They will appear here after you use a tool.'}
+                </p>
+              )}
+              {recentFiles.map((file) => (
                 <div
-                  key={idx}
-                  onClick={() => setActiveModule(file.module)}
+                  key={file.id}
+                  onClick={() => setIsHistoryModalOpen(true)}
                   className="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer group"
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div
-                      className={`w-7 h-7 rounded-lg bg-gradient-to-tr ${file.iconColor} flex items-center justify-center text-white shrink-0 shadow-2xs`}
-                    >
+                    <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-blue-500 to-indigo-600 flex items-center justify-center text-white shrink-0 shadow-2xs">
                       <FileText className="w-3.5 h-3.5" />
                     </div>
                     <div className="min-w-0">
                       <p className="text-xs font-bold text-slate-900 group-hover:text-[#2563eb] transition-colors truncate">
-                        {file.name}
+                        {file.outputFilename || file.filename}
                       </p>
-                      <p className="text-[10px] text-slate-400">
-                        {file.format} • {file.size} • {file.date}
+                      <p className="text-[10px] text-slate-400 truncate">
+                        {file.toolUsed} • {file.time}
                       </p>
                     </div>
                   </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setActiveModule(file.module);
-                    }}
-                    className="p-1 text-slate-300 hover:text-slate-600 transition-colors"
-                  >
-                    <MoreVertical className="w-3.5 h-3.5" />
-                  </button>
                 </div>
               ))}
             </div>

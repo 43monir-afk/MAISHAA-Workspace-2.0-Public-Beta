@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-labelledby="mw-m">
+<title id="mw-m">MAISHAA WORKSPACE</title>
+<defs><linearGradient id="mw-mb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2459CC"/><stop offset="1" stop-color="#0B2F8A"/></linearGradient></defs>
+<rect width="512" height="512" rx="112" fill="url(#mw-mb)"/>
+<path d="M92 392V152h54l78 120 78-120h54v240h-50V240l-64 98h-36l-64-98v152z" fill="#fff"/>
+<path d="M382 168q6-30 38-30 34 0 34 30 0 20-28 42l-44 34h74" fill="none" stroke="#fff" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

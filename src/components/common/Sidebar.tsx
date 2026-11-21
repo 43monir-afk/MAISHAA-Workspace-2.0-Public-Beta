@@ -13,12 +13,7 @@ import {
   Palette,
   LayoutTemplate,
   Sparkles,
-  Folder,
   Clock,
-  Star,
-  Cloud,
-  ChevronRight,
-  Crown,
   Scissors,
   PenTool,
   BookOpen,
@@ -164,7 +159,7 @@ export const Sidebar: React.FC = () => {
       aria-label="Workspace Sidebar"
     >
       {/* Scrollable Navigation List */}
-      <div className="flex-1 overflow-y-auto px-3.5 py-4 space-y-1 no-scrollbar">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3.5 py-4 space-y-1 sidebar-scroll">
         {/* Active Home Button */}
         <button
           onClick={() => setActiveModule('universal')}
@@ -219,67 +214,24 @@ export const Sidebar: React.FC = () => {
             <span>{language === 'bn' ? 'ব্যবহার নির্দেশিকা' : 'Tutorials & Guides'}</span>
           </button>
           <button
-            onClick={() => setActiveModule('universal')}
-            className="w-full flex items-center gap-3 px-3 py-1.5 rounded-lg hover:text-slate-200 hover:bg-slate-800/40 transition-colors"
-          >
-            <Folder className="w-4 h-4 text-slate-400" />
-            <span>{language === 'bn' ? 'আমার ফাইল' : 'My Files'}</span>
-          </button>
-          <button
             onClick={() => setIsHistoryModalOpen(true)}
             className="w-full flex items-center gap-3 px-3 py-1.5 rounded-lg hover:text-slate-200 hover:bg-slate-800/40 transition-colors"
           >
             <Clock className="w-4 h-4 text-slate-400" />
             <span>{language === 'bn' ? 'সাম্প্রতিক ফাইল' : 'Recent Files'}</span>
           </button>
-          <button
-            onClick={() => setActiveModule('universal')}
-            className="w-full flex items-center gap-3 px-3 py-1.5 rounded-lg hover:text-slate-200 hover:bg-slate-800/40 transition-colors"
-          >
-            <Star className="w-4 h-4 text-slate-400" />
-            <span>{language === 'bn' ? 'প্রিয় ফাইল' : 'Favorites'}</span>
-          </button>
-          <button
-            onClick={() => setActiveModule('universal')}
-            className="w-full flex items-center justify-between px-3 py-1.5 rounded-lg hover:text-slate-200 hover:bg-slate-800/40 transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <Cloud className="w-4 h-4 text-slate-400" />
-              <span>{language === 'bn' ? 'ক্লাউড স্টোরেজ' : 'Cloud Storage'}</span>
-            </div>
-            <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
-          </button>
         </div>
       </div>
 
-      {/* Bottom: "Upgrade to Pro Plan" Card */}
-      <div className="p-3.5 border-t border-slate-800 bg-[#070e1c]">
-        <div className="rounded-2xl bg-gradient-to-b from-[#0e1e38] to-[#0a1528] border border-amber-500/30 p-3.5 space-y-2 shadow-lg">
-          <div className="flex items-center gap-1.5 text-amber-400 font-extrabold text-xs">
-            <Crown className="w-4 h-4" />
-            <span>Upgrade to Pro Plan</span>
-          </div>
-          <ul className="text-[11px] text-slate-300 space-y-1 font-medium">
-            <li className="flex items-center gap-1.5">
-              <span className="text-amber-400 font-bold">+</span> More AI credits
-            </li>
-            <li className="flex items-center gap-1.5">
-              <span className="text-amber-400 font-bold">+</span> Larger file size
-            </li>
-            <li className="flex items-center gap-1.5">
-              <span className="text-amber-400 font-bold">+</span> Advanced tools
-            </li>
-          </ul>
-          <button
-            onClick={() => setActiveModule('office_pack')}
-            className="w-full py-2 rounded-xl bg-gradient-to-r from-amber-400 via-amber-300 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-black text-xs shadow-[0_4px_12px_rgba(245,158,11,0.3)] transition-all active:translate-y-0.5"
-          >
-            Upgrade Now
-          </button>
-        </div>
-
+      {/* Bottom: site links + ad slot */}
+      <div className="p-3.5 border-t border-slate-800 bg-[#070e1c] shrink-0 space-y-3">
+        <nav aria-label="Site" className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-400">
+          <button onClick={() => setActiveModule('pricing')} className="hover:text-white">{language === 'bn' ? 'প্ল্যান' : 'Pricing'}</button>
+          <button onClick={() => setActiveModule('download')} className="hover:text-white">{language === 'bn' ? 'পিসি অ্যাপ' : 'Desktop app'}</button>
+          <button onClick={() => setActiveModule('contact')} className="hover:text-white">{language === 'bn' ? 'যোগাযোগ' : 'Contact'}</button>
+        </nav>
         {/* 3. Desktop Sidebar Ad Slot (Hidden on Tablet/Mobile) */}
-        <AdSlot placement="sidebar-bottom" className="mt-2" />
+        <AdSlot placement="sidebar-bottom" className="" />
       </div>
     </aside>
   );

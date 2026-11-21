@@ -47,6 +47,7 @@ export interface Translations {
     deletePages: string;
     rotate: string;
     imagesToPdf: string;
+    pdfToImages: string;
     metadata: string;
     compress: string;
     addFiles: string;
@@ -259,6 +260,7 @@ export const translations: Record<LanguageMode, Translations> = {
       deletePages: 'পৃষ্ঠা অপসারণ (Delete Pages)',
       rotate: 'পৃষ্ঠা ঘোরান (Rotate)',
       imagesToPdf: 'ছবি থেকে পিডিএফ (Images to PDF)',
+      pdfToImages: 'পিডিএফ থেকে ছবি (PDF to JPG)',
       metadata: 'পিডিএফ মেটাডাটা ও তথ্য',
       compress: 'পিডিএফ সাইজ অপটিমাইজেশন (Compress)',
       addFiles: '+ আরও পিডিএফ ফাইল যুক্ত করুন',
@@ -469,6 +471,7 @@ export const translations: Record<LanguageMode, Translations> = {
       deletePages: 'Delete Pages',
       rotate: 'Rotate Pages',
       imagesToPdf: 'Images to PDF',
+      pdfToImages: 'PDF to JPG (Images)',
       metadata: 'PDF Properties & Metadata',
       compress: 'Optimize & Compress PDF',
       addFiles: '+ Add More PDF Files',

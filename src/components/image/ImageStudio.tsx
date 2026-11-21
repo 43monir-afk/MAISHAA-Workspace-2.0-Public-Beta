@@ -16,6 +16,7 @@ import {
   ImageProcessResult,
   ImagePromptResult,
 } from '../../services/imageService';
+import { addTextToImage, type TextPosition } from '../../services/imageTextOverlayService';
 import { formatFileSize, generateSafeOutputFilename } from '../../utils/fileDetection';
 import { createManagedObjectUrl } from '../../utils/privacy';
 import { downloadFileOnce } from '../../utils/downloadHelper';
@@ -62,7 +63,8 @@ export type ImageSubTab =
   | 'crop'
   | 'transform'
   | 'convert'
-  | 'object_erase';
+  | 'object_erase'
+  | 'text_overlay';
 
 export const ImageStudio: React.FC = () => {
   const {
@@ -76,6 +78,14 @@ export const ImageStudio: React.FC = () => {
   } = useWorkspace();
 
   const [activeSubTab, setActiveSubTab] = useState<ImageSubTab>('retouch');
+  // Text watermark / meme caption
+  const [ovText, setOvText] = useState('');
+  const [ovPosition, setOvPosition] = useState<TextPosition>('bottom-right');
+  const [ovSize, setOvSize] = useState(8);
+  const [ovColor, setOvColor] = useState('#ffffff');
+  const [ovOpacity, setOvOpacity] = useState(70);
+  const [ovOutline, setOvOutline] = useState(false);
+  const [ovTile, setOvTile] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [originalDimensions, setOriginalDimensions] = useState<{ width: number; height: number } | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -101,6 +111,11 @@ export const ImageStudio: React.FC = () => {
   const [cropBox, setCropBox] = useState({ x: 0, y: 0, width: 300, height: 300 });
 
   // Background Removal settings
+  const [bgProvider, setBgProvider] = useState<'ai_segmentation' | 'legacy_color'>('ai_segmentation');
+  const [bgModelVariant, setBgModelVariant] = useState<'small' | 'medium' | 'large'>('small');
+  const [bgEdgeSmoothing, setBgEdgeSmoothing] = useState<number>(1);
+  const [bgRemoveIslands, setBgRemoveIslands] = useState<boolean>(true);
+  const [bgHoleCorrection, setBgHoleCorrection] = useState<boolean>(true);
   const [bgTolerance, setBgTolerance] = useState<number>(38);
   const [bgFeather, setBgFeather] = useState<number>(2);
   const [smartAlphaMask, setSmartAlphaMask] = useState<boolean>(true);
@@ -141,6 +156,10 @@ export const ImageStudio: React.FC = () => {
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [outputFilename, setOutputFilename] = useState<string>('');
 
+  // Version history so edits can be chained and undone
+  const [history, setHistory] = useState<File[]>([]);
+  const [future, setFuture] = useState<File[]>([]);
+
   // Staged files integration
   useEffect(() => {
     if (stagedFiles && stagedFiles.length > 0) {
@@ -149,7 +168,11 @@ export const ImageStudio: React.FC = () => {
     }
   }, [stagedFiles]);
 
-  const loadFile = async (file: File) => {
+  const loadFile = async (file: File, keepHistory = false) => {
+    if (!keepHistory) {
+      setHistory([]);
+      setFuture([]);
+    }
     setSelectedFile(file);
     setErrorMessage(null);
     setResult(null);
@@ -173,6 +196,33 @@ export const ImageStudio: React.FC = () => {
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to inspect image');
     }
+  };
+
+  /** Make the current result the working image, so the next edit builds on it (undo goes back). */
+  const continueWithResult = () => {
+    if (!result || !selectedFile) return;
+    const next = new File([result.blob], outputFilename || selectedFile.name, {
+      type: result.blob.type || selectedFile.type,
+    });
+    setHistory((h) => [...h, selectedFile]);
+    setFuture([]);
+    loadFile(next, true);
+  };
+
+  const undoEdit = () => {
+    if (history.length === 0 || !selectedFile) return;
+    const prev = history[history.length - 1];
+    setHistory((h) => h.slice(0, -1));
+    setFuture((f) => [selectedFile, ...f]);
+    loadFile(prev, true);
+  };
+
+  const redoEdit = () => {
+    if (future.length === 0 || !selectedFile) return;
+    const next = future[0];
+    setFuture((f) => f.slice(1));
+    setHistory((h) => [...h, selectedFile]);
+    loadFile(next, true);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -283,6 +333,11 @@ export const ImageStudio: React.FC = () => {
 
         case 'bg_remove': {
           res = await removeImageBackground(selectedFile, {
+            provider: bgProvider,
+            modelVariant: bgModelVariant,
+            edgeSmoothing: bgEdgeSmoothing,
+            removeIslands: bgRemoveIslands,
+            holeCorrection: bgHoleCorrection,
             tolerance: bgTolerance,
             featherRadius: bgFeather,
             smartAlpha: smartAlphaMask,
@@ -309,6 +364,21 @@ export const ImageStudio: React.FC = () => {
           res = await smartObjectErase(selectedFile, cropBox);
           const ext = selectedFile.type === 'image/png' ? 'png' : 'jpg';
           outName = generateSafeOutputFilename(selectedFile.name, 'inpainted', ext);
+          break;
+        }
+
+        case 'text_overlay': {
+          res = await addTextToImage(selectedFile, {
+            text: ovText,
+            position: ovPosition,
+            sizePct: ovSize,
+            color: ovColor,
+            opacityPct: ovOpacity,
+            outline: ovOutline,
+            tile: ovTile,
+          });
+          const ext = res.format === 'image/jpeg' ? 'jpg' : res.format === 'image/webp' ? 'webp' : 'png';
+          outName = generateSafeOutputFilename(selectedFile.name, ovTile ? 'watermarked' : 'captioned', ext);
           break;
         }
 
@@ -456,6 +526,7 @@ export const ImageStudio: React.FC = () => {
           { id: 'convert', labelBn: 'ফরম্যাট পরিবর্তন', labelEn: 'Convert', icon: ArrowRightLeft },
           { id: 'transform', labelBn: 'ঘোরান ও ফ্লিপ', labelEn: 'Rotate & Flip', icon: RotateCw },
           { id: 'object_erase', labelBn: 'অবজেক্ট ইরেজ', labelEn: 'Object Erase', icon: Eraser },
+          { id: 'text_overlay', labelBn: 'ওয়াটারমার্ক ও ক্যাপশন', labelEn: 'Watermark & Caption', icon: Palette },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeSubTab === tab.id;
@@ -1154,6 +1225,58 @@ export const ImageStudio: React.FC = () => {
                 </div>
               )}
 
+              {/* Text Watermark / Meme Caption */}
+              {activeSubTab === 'text_overlay' && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-white">
+                    {language === 'bn' ? 'ওয়াটারমার্ক ও ক্যাপশন (বাংলা চলবে)' : 'Watermark & Caption (Bengali supported)'}
+                  </h3>
+                  <textarea
+                    value={ovText}
+                    onChange={(e) => setOvText(e.target.value)}
+                    rows={2}
+                    placeholder={language === 'bn' ? 'যেমন: © আমার নাম' : 'e.g. © My Studio'}
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs focus:outline-hidden focus:border-teal-400"
+                  />
+                  <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="Position">
+                    {(['top-left','top-center','top-right','middle-left','center','middle-right','bottom-left','bottom-center','bottom-right'] as TextPosition[]).map((pos) => (
+                      <button
+                        key={pos}
+                        type="button"
+                        disabled={ovTile}
+                        aria-pressed={ovPosition === pos}
+                        onClick={() => setOvPosition(pos)}
+                        className={`py-1.5 rounded-lg text-[10px] font-mono border disabled:opacity-40 ${ovPosition === pos && !ovTile ? 'bg-teal-500 text-slate-950 font-bold border-teal-400' : 'bg-slate-800 text-slate-300 border-slate-700'}`}
+                      >
+                        {pos}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <span className="text-[10px] text-slate-400 block mb-1">{language === 'bn' ? 'আকার %' : 'Size %'}</span>
+                      <input type="number" min={2} max={30} value={ovSize} onChange={(e) => setOvSize(parseInt(e.target.value, 10) || 8)} className="w-full px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block mb-1">{language === 'bn' ? 'স্বচ্ছতা %' : 'Opacity %'}</span>
+                      <input type="number" min={5} max={100} value={ovOpacity} onChange={(e) => setOvOpacity(parseInt(e.target.value, 10) || 70)} className="w-full px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block mb-1">{language === 'bn' ? 'রং' : 'Colour'}</span>
+                      <input type="color" value={ovColor} onChange={(e) => setOvColor(e.target.value)} className="w-full h-8 rounded-lg bg-slate-800 border border-slate-700" />
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-2 text-xs text-slate-300">
+                    <input type="checkbox" checked={ovOutline} onChange={(e) => setOvOutline(e.target.checked)} />
+                    {language === 'bn' ? 'মিম স্টাইল (বড় হাতের অক্ষর + আউটলাইন)' : 'Meme style (UPPERCASE + outline)'}
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-slate-300">
+                    <input type="checkbox" checked={ovTile} onChange={(e) => setOvTile(e.target.checked)} />
+                    {language === 'bn' ? 'পুরো ছবিতে বারবার বসান (ওয়াটারমার্ক প্যাটার্ন)' : 'Repeat across the whole image (watermark pattern)'}
+                  </label>
+                </div>
+              )}
+
               {/* Convert Format Mode */}
               {activeSubTab === 'convert' && (
                 <div className="space-y-3">
@@ -1210,52 +1333,172 @@ export const ImageStudio: React.FC = () => {
                       <Scissors className="w-4 h-4 text-teal-400" />
                       <span>{language === 'bn' ? 'ব্যাকগ্রাউন্ড অপসারণ সেটিংস' : 'Background Removal Settings'}</span>
                     </h3>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-teal-500/20 text-teal-300 border border-teal-500/30">
+                      {bgProvider === 'ai_segmentation'
+                        ? (language === 'bn' ? 'নিউরাল এআই' : 'Neural AI')
+                        : (language === 'bn' ? 'কালার ম্যাচ' : 'Color Match')}
+                    </span>
+                  </div>
+
+                  {/* Engine Selection Toggle */}
+                  <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-slate-900/80 border border-slate-800">
                     <button
                       type="button"
-                      onClick={() => setSmartAlphaMask(!smartAlphaMask)}
-                      className={`text-[10px] font-mono px-2.5 py-1 rounded-full border transition-all flex items-center gap-1.5 cursor-pointer ${
-                        smartAlphaMask
-                          ? 'bg-teal-500/20 text-teal-300 border-teal-500/40 shadow-xs'
-                          : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
+                      onClick={() => setBgProvider('ai_segmentation')}
+                      className={`py-2 px-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                        bgProvider === 'ai_segmentation'
+                          ? 'bg-teal-500 text-slate-950 shadow-sm'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800'
                       }`}
-                      title={language === 'bn' ? 'স্মার্ট আলফা মাস্ক টগল করুন' : 'Toggle Smart Alpha Mask'}
                     >
-                      <span className={`w-1.5 h-1.5 rounded-full ${smartAlphaMask ? 'bg-teal-400 animate-pulse' : 'bg-slate-500'}`} />
-                      <span>Smart Alpha: {smartAlphaMask ? (language === 'bn' ? 'চালু' : 'ON') : (language === 'bn' ? 'বন্ধ' : 'OFF')}</span>
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>{language === 'bn' ? 'এআই সেগমেন্টেশন' : 'AI Segmentation'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBgProvider('legacy_color')}
+                      className={`py-2 px-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                        bgProvider === 'legacy_color'
+                          ? 'bg-teal-500 text-slate-950 shadow-sm'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                      }`}
+                    >
+                      <Palette className="w-3.5 h-3.5" />
+                      <span>{language === 'bn' ? 'কালার টলারেন্স (লেগ্যাসি)' : 'Color Tolerance'}</span>
                     </button>
                   </div>
 
-                  <div className="space-y-3">
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs text-slate-300">
-                        <span>{language === 'bn' ? 'কালার সহনশীলতা (Tolerance)' : 'Color Tolerance'}</span>
-                        <span className="font-mono text-teal-400">{bgTolerance}</span>
+                  {/* AI Segmentation Controls (Default) */}
+                  {bgProvider === 'ai_segmentation' && (
+                    <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-3">
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-slate-300 font-medium">
+                            {language === 'bn' ? 'মডেল প্রিসিশন (Model Precision)' : 'Model Precision'}
+                          </span>
+                          <span className="text-[10px] font-mono text-teal-400 font-bold">
+                            {bgModelVariant === 'large'
+                              ? 'Large (Full IS-Net)'
+                              : bgModelVariant === 'medium'
+                              ? 'Medium (FP16)'
+                              : 'Fast (Quantized)'}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {[
+                            { id: 'small', label: language === 'bn' ? 'দ্রুত (Fast)' : 'Fast' },
+                            { id: 'medium', label: language === 'bn' ? 'ব্যালান্সড' : 'Balanced' },
+                            { id: 'large', label: language === 'bn' ? 'হাই-রেস' : 'High-Res' },
+                          ].map((opt) => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => setBgModelVariant(opt.id as any)}
+                              className={`py-1.5 px-2 rounded-lg text-[11px] font-bold border transition-all ${
+                                bgModelVariant === opt.id
+                                  ? 'bg-teal-500 text-slate-950 border-teal-400'
+                                  : 'bg-slate-800 text-slate-300 border-slate-700 hover:border-slate-600'
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                      <input
-                        type="range"
-                        min="10"
-                        max="80"
-                        value={bgTolerance}
-                        onChange={(e) => setBgTolerance(parseInt(e.target.value))}
-                        className="w-full accent-teal-400 cursor-pointer"
-                      />
-                    </div>
 
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs text-slate-300">
-                        <span>{language === 'bn' ? 'এজ ফেদারিং (Edge Feather)' : 'Edge Feathering'}</span>
-                        <span className="font-mono text-teal-400">{bgFeather}px</span>
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-xs text-slate-300">
+                          <span>{language === 'bn' ? 'এজ স্মুথিং (Edge Smoothing)' : 'Edge Smoothing'}</span>
+                          <span className="font-mono text-teal-400">{bgEdgeSmoothing}px</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="4"
+                          value={bgEdgeSmoothing}
+                          onChange={(e) => setBgEdgeSmoothing(parseInt(e.target.value))}
+                          className="w-full accent-teal-400 cursor-pointer"
+                        />
                       </div>
-                      <input
-                        type="range"
-                        min="0"
-                        max="8"
-                        value={bgFeather}
-                        onChange={(e) => setBgFeather(parseInt(e.target.value))}
-                        className="w-full accent-teal-400 cursor-pointer"
-                      />
+
+                      <div className="pt-2 border-t border-slate-800/80 space-y-2 text-xs">
+                        <label className="flex items-center justify-between text-slate-300 cursor-pointer">
+                          <span>{language === 'bn' ? 'অবাঞ্ছিত ব্যাকগ্রাউন্ড দাগ মুছে ফেলুন (Speck Cleanup)' : 'Clean Background Specks & Islands'}</span>
+                          <input
+                            type="checkbox"
+                            checked={bgRemoveIslands}
+                            onChange={(e) => setBgRemoveIslands(e.target.checked)}
+                            className="w-4 h-4 rounded accent-teal-400"
+                          />
+                        </label>
+                        <label className="flex items-center justify-between text-slate-300 cursor-pointer">
+                          <span>{language === 'bn' ? 'পোশাকের ভেতরের ফাঁকা ভরাট করুন (Hole Correction)' : 'Fill Accidental Torso Holes'}</span>
+                          <input
+                            type="checkbox"
+                            checked={bgHoleCorrection}
+                            onChange={(e) => setBgHoleCorrection(e.target.checked)}
+                            className="w-4 h-4 rounded accent-teal-400"
+                          />
+                        </label>
+                      </div>
+
+                      <p className="text-[11px] text-slate-400 leading-normal pt-1 border-t border-slate-800/60">
+                        {language === 'bn'
+                          ? '💡 AI নিউরাল মডেল (MediaPipe & IS-Net) স্বয়ংক্রিয়ভাবে পুরো মানুষ (মুখ, চুল, পোশাক, হাত ও জুতো) আলাদা করে এবং পেছনের দেওয়াল, মেঝে ও গাছপালা সম্পূর্ণ মুছে ফেলে।'
+                          : '💡 Pretrained AI (MediaPipe & IS-Net) detects complete foreground subjects (hair, clothes, limbs) and strips away background walls, ground, and plants.'}
+                      </p>
                     </div>
-                  </div>
+                  )}
+
+                  {/* Legacy Color Mode */}
+                  {bgProvider === 'legacy_color' && (
+                    <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-slate-300 font-medium">Smart Alpha Matting</span>
+                        <button
+                          type="button"
+                          onClick={() => setSmartAlphaMask(!smartAlphaMask)}
+                          className={`text-[10px] font-mono px-2 py-0.5 rounded-full border transition-all ${
+                            smartAlphaMask
+                              ? 'bg-teal-500/20 text-teal-300 border-teal-500/40'
+                              : 'bg-slate-800 text-slate-400 border-slate-700'
+                          }`}
+                        >
+                          {smartAlphaMask ? (language === 'bn' ? 'চালু' : 'ON') : (language === 'bn' ? 'বন্ধ' : 'OFF')}
+                        </button>
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-xs text-slate-300">
+                          <span>{language === 'bn' ? 'কালার সহনশীলতা (Tolerance)' : 'Color Tolerance'}</span>
+                          <span className="font-mono text-teal-400">{bgTolerance}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="10"
+                          max="80"
+                          value={bgTolerance}
+                          onChange={(e) => setBgTolerance(parseInt(e.target.value))}
+                          className="w-full accent-teal-400 cursor-pointer"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-xs text-slate-300">
+                          <span>{language === 'bn' ? 'এজ ফেদারিং (Edge Feather)' : 'Edge Feathering'}</span>
+                          <span className="font-mono text-teal-400">{bgFeather}px</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="8"
+                          value={bgFeather}
+                          onChange={(e) => setBgFeather(parseInt(e.target.value))}
+                          className="w-full accent-teal-400 cursor-pointer"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1512,6 +1755,35 @@ export const ImageStudio: React.FC = () => {
             </div>
           </div>
 
+          {/* Edit history (undo / redo) */}
+          {selectedFile && (history.length > 0 || future.length > 0) && (
+            <div className="flex items-center justify-between px-4 py-2.5 rounded-xl border border-slate-800 bg-slate-900/60 text-xs text-slate-300">
+              <span>
+                {language === 'bn'
+                  ? `ধাপ ${history.length + 1} / ${history.length + future.length + 1}`
+                  : `Version ${history.length + 1} of ${history.length + future.length + 1}`}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={undoEdit}
+                  disabled={history.length === 0 || isProcessing}
+                  className="px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 hover:border-teal-400 disabled:opacity-40"
+                >
+                  ↶ {language === 'bn' ? 'আনডু' : 'Undo'}
+                </button>
+                <button
+                  type="button"
+                  onClick={redoEdit}
+                  disabled={future.length === 0 || isProcessing}
+                  className="px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 hover:border-teal-400 disabled:opacity-40"
+                >
+                  ↷ {language === 'bn' ? 'রিডু' : 'Redo'}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Result Stats & Download */}
           {result && resultUrl && (
             <div className="p-5 rounded-2xl border border-teal-500/30 bg-teal-950/20 space-y-4 animate-in fade-in zoom-in-95 duration-200">
@@ -1541,6 +1813,15 @@ export const ImageStudio: React.FC = () => {
 
               <button
                 type="button"
+                onClick={continueWithResult}
+                disabled={isProcessing}
+                className="w-full px-4 py-2.5 rounded-xl border border-teal-500/40 text-teal-200 text-xs font-semibold hover:bg-teal-500/10 disabled:opacity-40"
+              >
+                {language === 'bn' ? 'এই ছবি নিয়েই পরের এডিট করুন' : 'Continue editing with this result'}
+              </button>
+
+              <button
+                type="button"
                 disabled={isDownloading}
                 onClick={async () => {
                   if (isDownloading || !result) return;
@@ -1560,6 +1841,20 @@ export const ImageStudio: React.FC = () => {
                 <span>{t.common.download} ({outputFilename})</span>
               </button>
 
+              {activeSubTab === 'bg_remove' && (
+                <button
+                  type="button"
+                  onClick={() => setActiveModule('bg_remover')}
+                  className="w-full py-2.5 px-3 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-teal-300 border border-teal-500/40 text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-teal-400" />
+                  <span>
+                    {language === 'bn'
+                      ? 'মায়িশা বিজি রিমুভ স্টুডিও-তে খুলুন (ম্যানুয়াল ব্রাশ ও ব্যাকগ্রাউন্ড) →'
+                      : 'Open in BG Remove Studio (Manual Brushes & Backdrops) →'}
+                  </span>
+                </button>
+              )}
             </div>
           )}
         </div>

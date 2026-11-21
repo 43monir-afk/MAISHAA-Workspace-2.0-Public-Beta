@@ -40,6 +40,8 @@ const EXCLUDE_FILES = new Set([
 
 function shouldExclude(relPath) {
   const parts = relPath.split(/[/\\]/);
+  // Runtime database (users, licence keys, messages) must never ship in a source zip.
+  if (parts[0] === 'data') return true;
   // Check directory exclusions
   for (const part of parts) {
     if (EXCLUDE_DIRS.has(part)) return true;

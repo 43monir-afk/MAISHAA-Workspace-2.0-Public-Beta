@@ -105,6 +105,8 @@ export function detectFileType(file: File): FileDetectionResult {
 
   if (type === 'pdf') {
     suggestedActions.push(
+      { id: 'pdf_to_jpg', labelBn: 'জেপিজি ছবিতে রূপান্তর (PDF → JPG)', labelEn: 'Convert to JPG Images', targetModule: 'convert', actionType: 'convert' },
+      { id: 'pdf_to_images', labelBn: 'পিডিএফ থেকে ছবি (PDF → Images)', labelEn: 'PDF to JPG / Images', targetModule: 'pdf', actionType: 'pdfToImages' },
       { id: 'merge', labelBn: 'পিডিএফ একত্রীকরণ (Merge)', labelEn: 'Merge PDF', targetModule: 'pdf', actionType: 'merge' },
       { id: 'split', labelBn: 'পিডিএফ বিভক্তকরণ (Split)', labelEn: 'Split PDF', targetModule: 'pdf', actionType: 'split' },
       { id: 'compress', labelBn: 'পিডিএফ অপটিমাইজ ও কম্প্রেশন', labelEn: 'Compress PDF', targetModule: 'pdf', actionType: 'compress' },

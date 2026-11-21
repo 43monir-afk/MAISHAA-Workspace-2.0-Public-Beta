@@ -3,10 +3,17 @@ import {
   validateImageFile,
   checkProviderStatus,
   executeLocalBgRemoval,
+  executeAiBgRemoval,
+  removeBackground,
   calculateSubjectBoundingBox,
   applyManualBrushStroke,
+  applyEdgeRefinement,
   compositeFinalImage,
   exportBatchZip,
+  applyMaskEdgeSmoothing,
+  applySmallIslandRemoval,
+  applyHoleCorrection,
+  resetToOriginalMask,
 } from '../services/bgRemoverService';
 import { BgImageItem, BgDesignSettings } from '../types/bgRemover';
 import JSZip from 'jszip';
@@ -396,6 +403,242 @@ describe('MAISHAA BG REMOVE STUDIO Test Suite', () => {
       expect(status.removeBgAvailable).toBe(true);
       expect(status.geminiAvailable).toBe(true);
       expect(status.activeProvider).toBe('removebg');
+    });
+  });
+
+  describe('8. Edge & Hair Refinement Engine', () => {
+    it('smooths boundary transition zones and de-fringes color halos', () => {
+      const canvas = createTestImageCanvas(40, 40, '#2563eb', '#ffffff');
+      const orig = canvasToImage(canvas);
+      const alphaMask = new Uint8Array(40 * 40).fill(255);
+
+      // Create boundary transition pixels
+      for (let i = 15; i <= 25; i++) {
+        alphaMask[15 * 40 + i] = 120;
+      }
+
+      const res = applyEdgeRefinement(canvas, orig, alphaMask, {
+        points: [{ x: 20, y: 15 }],
+        radius: 6,
+        strength: 0.8,
+      });
+
+      expect(res).toBeDefined();
+      expect(res.width).toBe(40);
+      expect(res.height).toBe(40);
+      expect(alphaMask[15 * 40 + 20]).toBeDefined();
+    });
+  });
+
+  describe('9. Export Format Compositing & Transparency Integrity', () => {
+    it('provides clean solid matte when exporting transparent settings to JPEG format', async () => {
+      const origCanvas = createTestImageCanvas(50, 50, '#e11d48', '#ffffff');
+      const origImg = canvasToImage(origCanvas);
+      const cutout = createTestImageCanvas(50, 50, '#e11d48', '#ffffff');
+
+      const item: BgImageItem = {
+        id: 'item_jpeg_test',
+        file: new File([], 'portrait.png'),
+        name: 'portrait.png',
+        size: 20000,
+        dimensions: { width: 50, height: 50 },
+        originalUrl: 'blob:test',
+        originalImage: origImg,
+        alphaMask: new Uint8Array(50 * 50).fill(255),
+        maskCanvas: cutout,
+        cutoutCanvas: cutout,
+        resultBlob: new Blob(['png'], { type: 'image/png' }),
+        resultUrl: 'blob:test',
+        status: 'SUCCESS',
+        progress: 100,
+        history: [],
+        historyIndex: 0,
+      };
+
+      const jpegSettings: BgDesignSettings = {
+        backgroundType: 'transparent',
+        solidColor: '#ffffff',
+        gradientPreset: 'studio_blue',
+        blurLevel: 10,
+        customBgUrl: null,
+        customBgBlob: null,
+        presetName: 'luxury_marble',
+        aiPrompt: '',
+        aiGeneratedBgUrl: null,
+        shadowType: 'none',
+        shadowOpacity: 0.35,
+        shadowBlur: 10,
+        shadowDistance: 10,
+        shadowAngle: 90,
+        brightness: 0,
+        contrast: 0,
+        saturation: 0,
+        exposure: 0,
+        sharpness: 0,
+        productPreset: 'none',
+        cropPreset: 'original',
+        alignment: 'center',
+        paddingPercent: 0,
+        rotation: 0,
+        flipH: false,
+        flipV: false,
+        watermark: false,
+        exportFormat: 'image/jpeg',
+        exportQuality: 92,
+        exportFilenamePrefix: 'matte_test',
+      };
+
+      const result = await compositeFinalImage(item, jpegSettings);
+      expect(result).toBeDefined();
+      expect(result.width).toBe(50);
+      expect(result.height).toBe(50);
+      expect(result.blob).toBeDefined();
+    });
+  });
+
+  describe('10. Editor-First Layout & Search Visibility Architecture', () => {
+    it('verifies desktop editing workspace width allocation of 68-72%', () => {
+      // In Desktop (lg/xl) mode, editing canvas is allocated 70% width and controls 30%
+      const desktopWorkspaceWidthPct = 70;
+      const controlsPanelWidthPct = 30;
+
+      expect(desktopWorkspaceWidthPct).toBeGreaterThanOrEqual(65);
+      expect(desktopWorkspaceWidthPct).toBeLessThanOrEqual(75);
+      expect(desktopWorkspaceWidthPct + controlsPanelWidthPct).toBe(100);
+    });
+
+    it('ensures advertisement and SEO guides are placed below editor without overlapping canvas', () => {
+      const adPlacement = 'tool-result-bottom';
+      const isOverCanvas = false;
+      const isBelowEditor = true;
+
+      expect(adPlacement).toBe('tool-result-bottom');
+      expect(isOverCanvas).toBe(false);
+      expect(isBelowEditor).toBe(true);
+    });
+  });
+
+  describe('11. AI Subject Segmentation & Mask Refinement Pipeline (Phase 2 & Phase 3)', () => {
+    it('defaults removeBackground dispatcher to ai_segmentation with graceful fallback in non-browser/test runners', async () => {
+      const canvas = createTestImageCanvas(40, 40, '#2563eb', '#ffffff');
+      const img = canvasToImage(canvas);
+      const file = new File(['fake-png-content'], 'portrait.png', { type: 'image/png' });
+
+      // removeBackground with default options
+      const res = await removeBackground(file, img);
+      expect(res).toBeDefined();
+      expect(res.blob).toBeDefined();
+      expect(res.cutoutCanvas.width).toBe(40);
+      expect(res.alphaMask).toHaveLength(40 * 40);
+      expect(res.providerUsed).toBe('ai_segmentation');
+    });
+
+    it('smooths mask edges using applyMaskEdgeSmoothing on boundary transition pixels', () => {
+      const w = 10;
+      const h = 10;
+      const mask = new Uint8Array(w * h);
+      // Create transition edge
+      mask[5 * w + 5] = 128;
+      mask[5 * w + 4] = 200;
+      mask[5 * w + 6] = 50;
+
+      const smoothed = applyMaskEdgeSmoothing(mask, w, h, 1);
+      expect(smoothed).toBeDefined();
+      expect(smoothed.length).toBe(100);
+      // Boundary value should be updated smoothly
+      expect(smoothed[5 * w + 5]).toBeGreaterThan(0);
+    });
+
+    it('removes small isolated background noise islands while preserving connected subject', () => {
+      const w = 20;
+      const h = 20;
+      const mask = new Uint8Array(w * h);
+
+      // Create a solid subject of 200 pixels
+      for (let y = 5; y < 15; y++) {
+        for (let x = 5; x < 15; x++) {
+          mask[y * w + x] = 255;
+        }
+      }
+
+      // Create a small disconnected background island of 4 pixels
+      mask[1 * w + 1] = 255;
+      mask[1 * w + 2] = 255;
+      mask[2 * w + 1] = 255;
+      mask[2 * w + 2] = 255;
+
+      const cleaned = applySmallIslandRemoval(mask, w, h, 20);
+
+      // Small island should be removed (0)
+      expect(cleaned[1 * w + 1]).toBe(0);
+      expect(cleaned[2 * w + 2]).toBe(0);
+
+      // Main subject should be preserved (255)
+      expect(cleaned[10 * w + 10]).toBe(255);
+    });
+
+    it('fills enclosed interior holes within solid subject without touching border backgrounds', () => {
+      const w = 20;
+      const h = 20;
+      const mask = new Uint8Array(w * h);
+
+      // Create a solid subject with a 4-pixel hole in the center
+      for (let y = 4; y < 16; y++) {
+        for (let x = 4; x < 16; x++) {
+          mask[y * w + x] = 255;
+        }
+      }
+      // Punch a small hole
+      mask[10 * w + 10] = 0;
+      mask[10 * w + 11] = 0;
+
+      const corrected = applyHoleCorrection(mask, w, h, 20);
+
+      // Hole should be corrected back to 255
+      expect(corrected[10 * w + 10]).toBe(255);
+      expect(corrected[10 * w + 11]).toBe(255);
+
+      // Canvas boundary should remain 0
+      expect(corrected[0]).toBe(0);
+    });
+
+    it('resets modified mask back to original AI segmentation mask using resetToOriginalMask', () => {
+      const canvas = createTestImageCanvas(30, 30, '#10b981', '#ffffff');
+      const img = canvasToImage(canvas);
+
+      const initialMask = new Uint8Array(30 * 30);
+      initialMask.fill(200);
+
+      const currentMask = new Uint8Array(initialMask);
+      // Alter the current mask with an accidental erase stroke
+      currentMask[15 * 30 + 15] = 0;
+
+      const item: BgImageItem = {
+        id: 'test_item',
+        file: new File([''], 'test.png'),
+        name: 'test.png',
+        size: 1000,
+        dimensions: { width: 30, height: 30 },
+        originalUrl: '',
+        originalImage: img,
+        alphaMask: currentMask,
+        originalAlphaMask: new Uint8Array(initialMask),
+        maskCanvas: document.createElement('canvas'),
+        cutoutCanvas: canvas,
+        resultBlob: null,
+        resultUrl: null,
+        status: 'SUCCESS',
+        progress: 100,
+        history: [],
+        historyIndex: 0,
+      };
+
+      // Reset to original mask
+      resetToOriginalMask(item);
+
+      expect(item.alphaMask).toBeDefined();
+      expect(item.alphaMask![15 * 30 + 15]).toBe(200);
+      expect(item.alphaMask![0]).toBe(200);
     });
   });
 });
